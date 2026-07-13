@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Sliders, PlusCircle, Check, X, ShieldAlert, SlidersHorizontal, ShoppingCart, UserCheck } from 'lucide-react';
-import { getTransactions } from '../data/mockData';
 
 export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onUpdateWebhookUrl }) {
-  const { missions, users, duty, currentUserId, webhookUrl } = state;
+  const { missions, users, duty, currentUserId, webhookUrl, transactions = [] } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
   const isAdmin = currentUser.roleType === "Admin";
 
@@ -24,7 +23,6 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   const pendingMissions = missions.filter(m => m.status === "Pending Verification");
 
   // 待发放商品 (从 transactions 里捞)
-  const transactions = getTransactions();
   const pendingDeliveries = transactions.filter(t => t.status === "Pending Delivery");
 
   const handleCreateMissionSubmit = (e) => {

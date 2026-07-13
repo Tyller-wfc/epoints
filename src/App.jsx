@@ -33,7 +33,7 @@ function App() {
 
   // 初始化加载数据
   useEffect(() => {
-    setState(getAppState());
+    getAppState().then(data => setState(data));
   }, []);
 
   if (!state) return <div style={{ color: 'white', padding: '20px', fontFamily: 'monospace' }}>正在载入 ePoints 效能协同系统...</div>;
@@ -45,75 +45,75 @@ function App() {
   const hasCriticalAlert = tickets.some(t => t.severity === 'Critical' && t.status !== 'Resolved');
 
   // 对接数据更新逻辑并同步刷新组件状态
-  const handleSetCurrentUser = (userId) => {
-    setState(setCurrentUser(userId));
+  const handleSetCurrentUser = async (userId) => {
+    setState(await setCurrentUser(userId));
   };
 
-  const handleResetData = () => {
+  const handleResetData = async () => {
     if (window.confirm("确定要重置所有模拟数据吗？这会清除本地存储的所有修改记录。")) {
-      setState(resetAppState());
+      setState(await resetAppState());
     }
   };
 
-  const handleClaimMission = (missionId, userId) => {
-    setState(claimMission(missionId, userId));
+  const handleClaimMission = async (missionId, userId) => {
+    setState(await claimMission(missionId, userId));
   };
 
-  const handleSubmitProof = (missionId, proofText) => {
-    setState(submitProof(missionId, proofText));
+  const handleSubmitProof = async (missionId, proofText) => {
+    setState(await submitProof(missionId, proofText));
   };
 
-  const handleVerifyMission = (missionId, isApproved, penalize = false) => {
-    setState(verifyMission(missionId, isApproved, penalize));
+  const handleVerifyMission = async (missionId, isApproved, penalize = false) => {
+    setState(await verifyMission(missionId, isApproved, penalize));
   };
 
-  const handleUpdateMultiplier = (missionId, newMultiplier) => {
-    setState(updateMultiplier(missionId, newMultiplier));
+  const handleUpdateMultiplier = async (missionId, newMultiplier) => {
+    setState(await updateMultiplier(missionId, newMultiplier));
   };
 
-  const handleCreateMission = (missionData) => {
-    setState(createMission(missionData));
+  const handleCreateMission = async (missionData) => {
+    setState(await createMission(missionData));
   };
 
-  const handlePurchaseReward = (rewardId, userId) => {
-    const res = purchaseReward(rewardId, userId);
+  const handlePurchaseReward = async (rewardId, userId) => {
+    const res = await purchaseReward(rewardId, userId);
     if (res && res.error) {
       return res;
     }
     setState(res);
   };
 
-  const handleDeliverReward = (txId) => {
-    setState(deliverReward(txId));
+  const handleDeliverReward = async (txId) => {
+    setState(await deliverReward(txId));
   };
 
-  const handleRaiseAlert = (ticketData) => {
-    const res = raiseAlert(ticketData);
-    setState(res.state);
+  const handleRaiseAlert = async (ticketData) => {
+    const res = await raiseAlert(ticketData);
+    setState(res);
   };
 
-  const handleResolveTicket = (ticketId, resolutionNote) => {
-    setState(resolveTicket(ticketId, resolutionNote));
+  const handleResolveTicket = async (ticketId, resolutionNote) => {
+    setState(await resolveTicket(ticketId, resolutionNote));
   };
 
-  const handleSetActiveDuty = (dutyId) => {
-    setState(setActiveDuty(dutyId));
+  const handleSetActiveDuty = async (dutyId) => {
+    setState(await setActiveDuty(dutyId));
   };
 
-  const handlePenalizeNegligence = (ticketId) => {
-    setState(penalizeNegligence(ticketId));
+  const handlePenalizeNegligence = async (ticketId) => {
+    setState(await penalizeNegligence(ticketId));
   };
 
-  const handleFlagSecondaryIncident = (ticketId) => {
-    setState(flagSecondaryIncident(ticketId));
+  const handleFlagSecondaryIncident = async (ticketId) => {
+    setState(await flagSecondaryIncident(ticketId));
   };
 
-  const handleAcknowledgeTicket = (ticketId, userId) => {
-    setState(acknowledgeTicket(ticketId, userId));
+  const handleAcknowledgeTicket = async (ticketId, userId) => {
+    setState(await acknowledgeTicket(ticketId, userId));
   };
 
-  const handleUpdateWebhookUrl = (url) => {
-    setState(updateWebhookUrl(url));
+  const handleUpdateWebhookUrl = async (url) => {
+    setState(await updateWebhookUrl(url));
   };
 
   return (
