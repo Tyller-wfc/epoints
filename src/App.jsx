@@ -15,7 +15,8 @@ import {
   setActiveDuty,
   penalizeNegligence,
   flagSecondaryIncident,
-  acknowledgeTicket
+  acknowledgeTicket,
+  updateWebhookUrl
 } from './data/mockData';
 
 import Dashboard from './components/Dashboard';
@@ -109,6 +110,10 @@ function App() {
 
   const handleAcknowledgeTicket = (ticketId, userId) => {
     setState(acknowledgeTicket(ticketId, userId));
+  };
+
+  const handleUpdateWebhookUrl = (url) => {
+    setState(updateWebhookUrl(url));
   };
 
   return (
@@ -290,6 +295,7 @@ function App() {
             onCreateMission={handleCreateMission}
             onDeliverReward={handleDeliverReward}
             onSetActiveDuty={handleSetActiveDuty}
+            onUpdateWebhookUrl={handleUpdateWebhookUrl}
           />
         )}
       </main>

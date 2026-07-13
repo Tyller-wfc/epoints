@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { Sliders, PlusCircle, Check, X, ShieldAlert, SlidersHorizontal, ShoppingCart, UserCheck } from 'lucide-react';
 import { getTransactions } from '../data/mockData';
 
-export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty }) {
-  const { missions, users, duty, currentUserId } = state;
+export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onUpdateWebhookUrl }) {
+  const { missions, users, duty, currentUserId, webhookUrl } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
   const isAdmin = currentUser.roleType === "Admin";
+
+  // Webhook 输入框状态
+  const [webhookInput, setWebhookInput] = useState(webhookUrl || "");
 
   // 新任务表单状态
   const [newTitle, setNewTitle] = useState("");
@@ -54,6 +57,11 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     const val = tempMultipliers[missionId];
     if (val === undefined) return;
     onUpdateMultiplier(missionId, val);
+  };
+
+  const handleWebhookSubmit = (e) => {
+    e.preventDefault();
+    onUpdateWebhookUrl(webhookInput);
   };
 
   return (
@@ -370,6 +378,80 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
               </button>
             </div>
           </div>
+        </form>
+      </div>
+
+      {/* 50人团队轻量级：飞书/企微 Webhook 警报配置 */}
+      <div className="glass-panel" style={{ padding: '24px', gridColumn: '1 / -1', marginTop: '12px' }}>
+        <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <SlidersHorizontal size={18} />
+          群机器人告警 Webhook 配置 (飞书/企业微信/钉钉)
+        </h3>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '16px' }}>
+          这是为 <strong>50人以下小团队</strong> 设计的轻量级自动化通知方案。在此处配置您的群机器人 Webhook。当员工在“技术保障中心”提交 Critical (紧急) 故障申报时，系统除了在页面闪烁红色警戒外，还会自动发送 POST 消息至该 Webhook，实现即时群组艾特值班人，省去昂贵的第三方呼叫系统。
+        </p>
+
+        <form onSubmit={handleWebhookSubmit} style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '280px' }}>
+            <input
+              type="url"
+              className="cyber-input"
+              value={webhookInput}
+              onChange={(e) => setWebhookInput(e.target.value)}
+              placeholder="请输入企业微信/飞书/钉钉群机器人 Webhook 地址 (https://...)"
+              style={{ fontSize: '0.85rem', width: '100%' }}
+            />
+          </div>
+          <button type="submit" className="cyber-btn success" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
+            保存配置
+          </button>
+          <button 
+            type="button" 
+            className="cyber-btn"
+            style={{ padding: '8px 16px', fontSize: '0.8rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
+            onClick={async () => {
+              if (!webhookInput.startsWith("http")) {
+                alert("请先输入有效的 Webhook URL 并保存！");
+                return;
+              }
+              // 测试发送
+              try {
+                const payload = {
+                  msg_type: "post",
+                  content: {
+                    post: {
+                      zh_cn: {
+                        title: "🟢 ePoints 群机器人通道测试",
+                        content: [
+                          [{ tag: "text", text: `这是一条来自 ePoints 的测试消息。\n` }],
+                          [{ tag: "text", text: `当前配置生效状态: 联通正常\n` }],
+                          [{ tag: "text", text: "联调测试完毕，即时通讯接入成功！" }]
+                        ]
+                      }
+                    }
+                  }
+                };
+                const genericPayload = {
+                  msgtype: "markdown",
+                  markdown: {
+                    content: "### 🟢 ePoints 群机器人通道测试\n> 这是一条来自 ePoints 敏捷协同系统的通道测试消息。联调成功，警报联动已就绪！"
+                  }
+                };
+                
+                await fetch(webhookInput, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(webhookInput.includes("feishu") ? payload : genericPayload),
+                  mode: "no-cors"
+                });
+                alert("测试请求已发送，请检查您的群聊是否有通知收到！");
+              } catch (err) {
+                alert("发送失败，请检查控制台网络报错: " + err.message);
+              }
+            }}
+          >
+            发送测试消息
+          </button>
         </form>
       </div>
 

@@ -216,6 +216,17 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
               {severity === 'Critical' ? "触发红色警报・自动派发值班人员" : "上报系统故障"}
             </button>
           </form>
+          
+          {/* 50人团队轻量级：Webhook 状态指示 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--text-muted)', justifyContent: 'center', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: (state.webhookUrl && !state.webhookUrl.includes("mock-webhook-url")) ? 'var(--accent-green)' : 'rgba(255,255,255,0.2)' }} />
+            <span>
+              {(state.webhookUrl && !state.webhookUrl.includes("mock-webhook-url")) 
+                ? `即时群聊 Webhook 联动已就绪 (Critical 警报将同步群艾特值班人)` 
+                : `群机器人 Webhook 未配置 (Critical 警报将仅在网页上广播)`
+              }
+            </span>
+          </div>
         </div>
 
       </div>

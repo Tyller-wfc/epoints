@@ -140,6 +140,7 @@ export const initData = () => {
     localStorage.removeItem("ep_feed");
     localStorage.removeItem("ep_current_user_id");
     localStorage.removeItem("ep_transactions");
+    localStorage.removeItem("ep_webhook_url");
   }
 
   if (!localStorage.getItem("ep_users")) localStorage.setItem("ep_users", JSON.stringify(INITIAL_USERS));
@@ -149,6 +150,9 @@ export const initData = () => {
   if (!localStorage.getItem("ep_tickets")) localStorage.setItem("ep_tickets", JSON.stringify(INITIAL_TICKETS));
   if (!localStorage.getItem("ep_feed")) localStorage.setItem("ep_feed", JSON.stringify(INITIAL_FEED));
   if (!localStorage.getItem("ep_current_user_id")) localStorage.setItem("ep_current_user_id", "u-2"); // 默认是李明
+  if (!localStorage.getItem("ep_webhook_url")) {
+    localStorage.setItem("ep_webhook_url", "https://open.feishu.cn/open-apis/bot/v2/hook/mock-webhook-url-xyz");
+  }
 };
 
 // 获取所有实体数据
@@ -161,7 +165,8 @@ export const getAppState = () => {
     duty: JSON.parse(localStorage.getItem("ep_duty")),
     tickets: JSON.parse(localStorage.getItem("ep_tickets")),
     feed: JSON.parse(localStorage.getItem("ep_feed")),
-    currentUserId: localStorage.getItem("ep_current_user_id")
+    currentUserId: localStorage.getItem("ep_current_user_id"),
+    webhookUrl: localStorage.getItem("ep_webhook_url")
   };
 };
 
@@ -179,6 +184,7 @@ export const resetAppState = () => {
   localStorage.removeItem("ep_tickets");
   localStorage.removeItem("ep_feed");
   localStorage.removeItem("ep_current_user_id");
+  localStorage.removeItem("ep_webhook_url");
   return getAppState();
 };
 
@@ -440,6 +446,47 @@ export const raiseAlert = (ticketData) => {
   const alertLevelText = ticketData.severity === "Critical" ? "🚨【红色警报】" : "⚠️【系统故障申报】";
   pushFeed("support", `${alertLevelText}${reporter.name} 申报紧急故障：${ticketData.title}。已自动分派给在岗值班员：${assigneeUser.name}！`);
 
+  // Webhook 实时通知推送
+  const webhookUrl = localStorage.getItem("ep_webhook_url");
+  if (webhookUrl && webhookUrl.startsWith("http") && !webhookUrl.includes("mock-webhook-url")) {
+    (async () => {
+      try {
+        const payload = {
+          msg_type: "post",
+          content: {
+            post: {
+              zh_cn: {
+                title: `🚨 ePoints 紧急故障警报 (${ticketData.severity}级)`,
+                content: [
+                  [{ tag: "text", text: `故障标题: ${ticketData.title}\n` }],
+                  [{ tag: "text", text: `负责人: ${assigneeUser.name}\n` }],
+                  [{ tag: "text", text: `系统描述: ${ticketData.description}\n` }],
+                  [{ tag: "text", text: "请值班员在 10 分钟内确认接单响应，避免超时扣分处罚！" }]
+                ]
+              }
+            }
+          }
+        };
+        const genericPayload = {
+          msgtype: "markdown",
+          markdown: {
+            content: `### 🚨 ePoints 紧急故障警报 (${ticketData.severity}级)\n> **故障标题**: ${ticketData.title}\n> **负责人**: ${assigneeUser.name}\n> **描述**: ${ticketData.description}\n\n请值班员在 10 分钟内确认接单响应，避免超时扣减 100 eP 处罚！`
+          }
+        };
+
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(webhookUrl.includes("feishu") ? payload : genericPayload),
+          mode: "no-cors"
+        });
+        console.log("Webhook pushed to:", webhookUrl);
+      } catch (err) {
+        console.error("Webhook push failed:", err);
+      }
+    })();
+  }
+
   return { state: getAppState(), newTicketId: newTicket.id };
 };
 
@@ -641,4 +688,11 @@ export const flagSecondaryIncident = (ticketId) => {
   saveState("ep_tickets", updatedTickets);
 
   return penalizeUser(resolverId, penaltyPoints, `故障修复方案不过关，导致【${ticket.title}】在短时间内二次重开/引发次生故障`);
+};
+
+// 更新群机器人 Webhook 地址
+export const updateWebhookUrl = (url) => {
+  localStorage.setItem("ep_webhook_url", url);
+  pushFeed("system", `【配置更新】群机器人告警 Webhook 地址已更新。`);
+  return getAppState();
 };
