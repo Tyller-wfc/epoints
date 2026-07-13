@@ -1,11 +1,11 @@
 // mockData.js - 本地存储数据层与核心业务逻辑模拟
 
 const INITIAL_USERS = [
-  { id: "u-1", name: "张建国", role: "项目总监 (效能主管)", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png" },
-  { id: "u-2", name: "李明", role: "资深保障专家 (高级研发)", roleType: "Engineer", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png" },
-  { id: "u-3", name: "王芳", role: "研发保障工程师 (开发工程师)", roleType: "Engineer", points_balance: 850, points_earned_lifetime: 3200, avatar: "/avatars/dev.png" },
-  { id: "u-4", name: "赵勇", role: "体验设计专家 (UI/UX)", roleType: "Designer", points_balance: 400, points_earned_lifetime: 2100, avatar: "/avatars/designer.png" },
-  { id: "u-5", name: "刘洋", role: "质量保障工程师 (QA测试)", roleType: "QA", points_balance: 600, points_earned_lifetime: 2800, avatar: "/avatars/qa.png" }
+  { id: "u-1", name: "张建国", role: "项目总监 (效能主管)", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 },
+  { id: "u-2", name: "李明", role: "资深保障专家 (高级研发)", roleType: "Engineer", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png", penalties_count: 0, points_deducted_total: 0 },
+  { id: "u-3", name: "王芳", role: "研发保障工程师 (开发工程师)", roleType: "Engineer", points_balance: 850, points_earned_lifetime: 3200, avatar: "/avatars/dev.png", penalties_count: 0, points_deducted_total: 0 },
+  { id: "u-4", name: "赵勇", role: "体验设计专家 (UI/UX)", roleType: "Designer", points_balance: 400, points_earned_lifetime: 2100, avatar: "/avatars/designer.png", penalties_count: 0, points_deducted_total: 0 },
+  { id: "u-5", name: "刘洋", role: "质量保障工程师 (QA测试)", roleType: "QA", points_balance: 600, points_earned_lifetime: 2800, avatar: "/avatars/qa.png", penalties_count: 0, points_deducted_total: 0 }
 ];
 
 const INITIAL_MISSIONS = [
@@ -129,7 +129,7 @@ export const initData = () => {
   const existingUsers = localStorage.getItem("ep_users");
   const existingRewards = localStorage.getItem("ep_rewards");
   if (
-    (existingUsers && (existingUsers.includes("谢尔盖") || existingUsers.includes("unsplash.com"))) ||
+    (existingUsers && (existingUsers.includes("谢尔盖") || existingUsers.includes("unsplash.com") || !existingUsers.includes("penalties_count"))) ||
     (existingRewards && !existingRewards.includes("r-16"))
   ) {
     localStorage.removeItem("ep_users");
@@ -232,7 +232,7 @@ export const submitProof = (missionId, proofText) => {
 };
 
 // 项目总监审核任务并拨付积分
-export const verifyMission = (missionId, isApproved) => {
+export const verifyMission = (missionId, isApproved, penalize = false) => {
   const state = getAppState();
   let pointsReward = 0;
   let earnerId = null;
@@ -268,7 +268,24 @@ export const verifyMission = (missionId, isApproved) => {
     saveState("ep_users", users);
   } else if (!isApproved && earnerId) {
     const user = state.users.find(u => u.id === earnerId);
-    pushFeed("system", `【核实驳回】项目总监退回了 ${user.name} 提交的任务【${missionTitle}】证明，请补充细节。`);
+    if (penalize) {
+      const penaltyAmount = 50;
+      const updatedUsers = state.users.map(u => {
+        if (u.id === earnerId) {
+          pushFeed("system", `🚨【虚报惩罚】主管驳回了 ${u.name} 提交的任务【${missionTitle}】成果证明，判定为进度灌水，扣减 ${penaltyAmount} ePoints！`);
+          return {
+            ...u,
+            points_balance: Math.max(0, u.points_balance - penaltyAmount),
+            penalties_count: (u.penalties_count || 0) + 1,
+            points_deducted_total: (u.points_deducted_total || 0) + penaltyAmount
+          };
+        }
+        return u;
+      });
+      saveState("ep_users", updatedUsers);
+    } else {
+      pushFeed("system", `【核实驳回】项目总监退回了 ${user.name} 提交的任务【${missionTitle}】证明，请补充细节。`);
+    }
   }
 
   saveState("ep_missions", missions);
@@ -496,4 +513,81 @@ export const setActiveDuty = (dutyId) => {
   pushFeed("system", `【值班交接】技术保障中心完成交接班，当前在岗技术值班员：${onDutyName}。`);
   saveState("ep_duty", updatedDuty);
   return getAppState();
+};
+
+// 核心处罚接口：直接对特定用户实施扣分并记录原因
+export const penalizeUser = (userId, points, reason) => {
+  const state = getAppState();
+  const user = state.users.find(u => u.id === userId);
+  if (!user) return getAppState();
+
+  const updatedUsers = state.users.map(u => {
+    if (u.id === userId) {
+      return {
+        ...u,
+        points_balance: Math.max(0, u.points_balance - points),
+        penalties_count: (u.penalties_count || 0) + 1,
+        points_deducted_total: (u.points_deducted_total || 0) + points
+      };
+    }
+    return u;
+  });
+
+  pushFeed("support", `🚨【效能问责】针对【${user.name}】进行违规扣分处罚：${reason}，扣减 ${points} eP。`);
+  saveState("ep_users", updatedUsers);
+  return getAppState();
+};
+
+// 判定值班人员响应不力
+export const penalizeNegligence = (ticketId) => {
+  const state = getAppState();
+  const ticket = state.tickets.find(t => t.id === ticketId);
+  if (!ticket || ticket.status === "Resolved") return getAppState();
+
+  const assigneeId = ticket.assigned_to;
+  const user = state.users.find(u => u.id === assigneeId);
+  if (!user) return getAppState();
+
+  const penaltyPoints = 100;
+  
+  const updatedTickets = state.tickets.map(t => {
+    if (t.id === ticketId) {
+      return { ...t, negligence_penalized: true };
+    }
+    return t;
+  });
+  saveState("ep_tickets", updatedTickets);
+
+  return penalizeUser(assigneeId, penaltyPoints, `值班期间对紧急故障【${ticket.title}】响应不力/未及时处理`);
+};
+
+// 判定为二次故障/返工追责
+export const flagSecondaryIncident = (ticketId) => {
+  const state = getAppState();
+  const ticket = state.tickets.find(t => t.id === ticketId);
+  if (!ticket || ticket.status !== "Resolved") return getAppState();
+
+  const resolverId = ticket.assigned_to;
+  const user = state.users.find(u => u.id === resolverId);
+  if (!user) return getAppState();
+
+  const penaltyPoints = 150;
+
+  const updatedTickets = state.tickets.map(t => {
+    if (t.id === ticketId) {
+      return {
+        ...t,
+        status: "Open",
+        resolved_at: null,
+        resolution_note: "",
+        points_earned_actual: 0,
+        secondary_fault: true,
+        created_at: new Date().toISOString()
+      };
+    }
+    return t;
+  });
+  saveState("ep_tickets", updatedTickets);
+
+  return penalizeUser(resolverId, penaltyPoints, `故障修复方案不过关，导致【${ticket.title}】在短时间内二次重开/引发次生故障`);
 };

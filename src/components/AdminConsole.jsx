@@ -101,21 +101,34 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                       <strong>{earner.name} 提交的交付证明:</strong> {m.proof_of_work}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <button 
                         onClick={() => onVerifyMission(m.id, true)} 
                         className="cyber-btn success" 
-                        style={{ flex: 1, padding: '6px', fontSize: '0.75rem' }}
+                        style={{ padding: '8px', fontSize: '0.75rem', width: '100%' }}
                       >
                         <Check size={14} /> 审核通过・拨付积分
                       </button>
-                      <button 
-                        onClick={() => onVerifyMission(m.id, false)} 
-                        className="cyber-btn danger" 
-                        style={{ flex: 1, padding: '6px', fontSize: '0.75rem' }}
-                      >
-                        <X size={14} /> 驳回修改
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={() => onVerifyMission(m.id, false)} 
+                          className="cyber-btn" 
+                          style={{ flex: 1, padding: '6px', fontSize: '0.75rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
+                        >
+                          普通驳回
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`确定要驳回 ${earner.name} 的成果申请，并判定为虚报成果/进度灌水，对其扣减 50 eP 积分吗？`)) {
+                              onVerifyMission(m.id, false, true);
+                            }
+                          }}
+                          className="cyber-btn danger" 
+                          style={{ flex: 2, padding: '6px', fontSize: '0.75rem' }}
+                        >
+                          <X size={14} /> 判定虚报并驳回 (-50 eP)
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, PhoneCall, MessageSquare, AlertTriangle, CheckSquare, Clock, Coins, User, Users } from 'lucide-react';
+import { ShieldAlert, PhoneCall, MessageSquare, AlertTriangle, CheckSquare, Clock, Coins, User, Users, AlertOctagon } from 'lucide-react';
 
-export default function SupportCenter({ state, onRaiseAlert, onResolveTicket }) {
+export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, onPenalizeNegligence, onFlagSecondaryIncident }) {
   const { tickets, duty, users, currentUserId } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
@@ -255,6 +255,16 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket }) 
                       <span className={`badge ${t.severity === 'Critical' ? 'red' : t.severity === 'High' ? 'orange' : 'cyan'}`}>
                         {t.severity === 'Critical' ? '红色警戒 (Critical)' : t.severity === 'High' ? '严重故障' : '普通问题'}
                       </span>
+                      {t.negligence_penalized && (
+                        <span className="badge red" style={{ fontSize: '0.65rem', animation: 'none' }}>
+                          🚨 响应怠慢已扣分
+                        </span>
+                      )}
+                      {t.secondary_fault && (
+                        <span className="badge orange" style={{ fontSize: '0.65rem', animation: 'none' }}>
+                          ⚠️ 二次重开
+                        </span>
+                      )}
                       <h4 style={{ color: isResolved ? 'var(--text-secondary)' : 'var(--text-bright)', fontSize: '1rem', fontWeight: 'bold' }}>
                         {t.title}
                       </h4>
@@ -333,6 +343,45 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket }) 
                       )}
                     </div>
                   )}
+
+                  {/* 主管效能审计栏 */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', borderTop: '1px dashed rgba(255,255,255,0.05)', marginTop: '12px', paddingTop: '10px' }}>
+                    <span className="badge muted" style={{ fontSize: '0.65rem' }}>主管效能审计</span>
+                    
+                    {!isResolved && (
+                      t.negligence_penalized ? (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <AlertOctagon size={12} /> 已扣分警告 (接单慢)
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`确认判定值班员 [${assignee.name}] 响应不力并处以 100 eP 罚扣？`)) {
+                              onPenalizeNegligence(t.id);
+                            }
+                          }}
+                          className="cyber-btn danger animate-pulse"
+                          style={{ padding: '4px 10px', fontSize: '0.7rem' }}
+                        >
+                          判定接单响应不力 (-100 eP)
+                        </button>
+                      )
+                    )}
+
+                    {isResolved && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`确认将该故障判定为二次重开或修复质量低下？工单将重新开启，并从修复人 [${assignee.name}] 账户中扣减 150 eP。`)) {
+                            onFlagSecondaryIncident(t.id);
+                          }
+                        }}
+                        className="cyber-btn danger"
+                        style={{ padding: '4px 10px', fontSize: '0.7rem' }}
+                      >
+                        判定二次故障/返工并追责 (-150 eP)
+                      </button>
+                    )}
+                  </div>
 
                 </div>
               );

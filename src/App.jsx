@@ -12,7 +12,9 @@ import {
   deliverReward, 
   raiseAlert, 
   resolveTicket, 
-  setActiveDuty 
+  setActiveDuty,
+  penalizeNegligence,
+  flagSecondaryIncident
 } from './data/mockData';
 
 import Dashboard from './components/Dashboard';
@@ -59,8 +61,8 @@ function App() {
     setState(submitProof(missionId, proofText));
   };
 
-  const handleVerifyMission = (missionId, isApproved) => {
-    setState(verifyMission(missionId, isApproved));
+  const handleVerifyMission = (missionId, isApproved, penalize = false) => {
+    setState(verifyMission(missionId, isApproved, penalize));
   };
 
   const handleUpdateMultiplier = (missionId, newMultiplier) => {
@@ -94,6 +96,14 @@ function App() {
 
   const handleSetActiveDuty = (dutyId) => {
     setState(setActiveDuty(dutyId));
+  };
+
+  const handlePenalizeNegligence = (ticketId) => {
+    setState(penalizeNegligence(ticketId));
+  };
+
+  const handleFlagSecondaryIncident = (ticketId) => {
+    setState(flagSecondaryIncident(ticketId));
   };
 
   return (
@@ -262,6 +272,8 @@ function App() {
             state={state} 
             onRaiseAlert={handleRaiseAlert} 
             onResolveTicket={handleResolveTicket}
+            onPenalizeNegligence={handlePenalizeNegligence}
+            onFlagSecondaryIncident={handleFlagSecondaryIncident}
           />
         )}
         {activeTab === 'admin' && (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Award, Coins, TrendingUp, ShieldAlert, ArrowRight, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target } from 'lucide-react';
+import { Award, Coins, TrendingUp, ShieldAlert, ArrowRight, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target, AlertOctagon } from 'lucide-react';
 
 export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
   const { users, feed, currentUserId } = state;
@@ -84,6 +84,17 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
               </div>
             </div>
           </div>
+          {((currentUser.penalties_count || 0) > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-red)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                <AlertOctagon size={14} className="glow-text-red" />
+                <span>累计处罚: {currentUser.penalties_count} 次</span>
+              </div>
+              <span className="military-font glow-text-red" style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>
+                - {currentUser.points_deducted_total} eP
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 角色速切面板 */}
@@ -189,7 +200,14 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
                         {u.name}
                         {isMVP && <span className="badge orange" style={{ marginLeft: '8px', fontSize: '0.6rem', padding: '1px 4px' }}>MVP</span>}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.role}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{u.role}</span>
+                        {(u.penalties_count > 0) && (
+                          <span style={{ color: 'var(--accent-red)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
+                            <AlertOctagon size={10} /> {u.penalties_count} 罚
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -286,6 +304,19 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
               }}
             >
               🎖️ 荣誉等级与勋章
+            </button>
+            <button
+              onClick={() => setActiveHandbookTab('penalties')}
+              className="cyber-btn"
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                background: activeHandbookTab === 'penalties' ? 'var(--accent-cyan)' : 'rgba(0, 0, 0, 0.2)',
+                borderColor: activeHandbookTab === 'penalties' ? 'var(--accent-cyan)' : 'var(--border-muted)',
+                color: activeHandbookTab === 'penalties' ? 'black' : 'var(--text-primary)'
+              }}
+            >
+              ⚠️ 问责与处罚条例
             </button>
           </div>
         </div>
@@ -506,6 +537,70 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
                   </div>
                 </div>
               </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* Tab 3: 问责与处罚条例 */}
+        {activeHandbookTab === 'penalties' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            
+            {/* 处罚条例1: 故障处理超时 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-red)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertOctagon size={14} className="glow-text-red" /> 故障响应与恢复严重超时
+              </h4>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                当生产环境或核心系统发生故障时，值班或派单人员需在时效内解决：
+              </p>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>P0/P1级故障 (Critical)</strong>: 超过 120 分钟未恢复。</li>
+                <li>• <strong>处罚措施</strong>: 扣除责任人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>100 - 200 eP</span> 效能积分。</li>
+                <li>• <strong>系统功能</strong>: 管理员可在保障队列中对逾期工单执行扣分。</li>
+              </ul>
+            </div>
+
+            {/* 处罚条例2: 值班推诿或响应不力 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-red)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldAlert size={14} className="glow-text-red" /> 值班响应不力 / 推诿扯皮
+              </h4>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                技术保障 On-Call 负责人必须时刻处于就绪状态，以最快速度响应警报：
+              </p>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>违规判定</strong>: 红色警报触发后，值班人员超过 15 分钟未确认接单，或拒绝履行排障职责。</li>
+                <li>• <strong>处罚措施</strong>: 扣除值班人员 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>100 eP</span> 积分，并在动态屏进行系统通报批评。</li>
+              </ul>
+            </div>
+
+            {/* 处罚条例3: 修复质量低劣 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-red)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Server size={14} className="glow-text-red" /> 修复质量差 / 二次故障
+              </h4>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                保障修复要求彻底排查根因，避免草率“贴膏药”式修复而引发更大隐患：
+              </p>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>违规判定</strong>: 故障标记为 Resolved 后 2 小时内由于相同原因此次爆发，或修复方案直接引发了其他次生严重问题。</li>
+                <li>• <strong>处罚措施</strong>: 扣除原修复人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>150 eP</span> 积分，该工单作废并重新打开，重新指派排障。</li>
+              </ul>
+            </div>
+
+            {/* 处罚条例4: 虚报成果 / 进度灌水 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent-orange)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-orange)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Flame size={14} /> 虚报成果 / 进度灌水
+              </h4>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                任务提审必须严谨，上传真实有效的可供核实的交付成果：
+              </p>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>违规判定</strong>: 员工虚构工作成果（如随手填写的假链接、无效 commit）或提交物极其应付，被主管审核驳回且判定为虚报。</li>
+                <li>• <strong>处罚措施</strong>: 扣除当事人 <span style={{ color: 'var(--accent-orange)', fontWeight: 'bold' }}>50 eP</span> 积分，驳回修改，以正研发风气。</li>
+              </ul>
             </div>
 
           </div>
