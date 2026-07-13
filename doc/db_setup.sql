@@ -117,8 +117,8 @@ CREATE TABLE feed (
 
 -- 10. 创建系统配置表
 CREATE TABLE settings (
-  \`key\` VARCHAR(64) PRIMARY KEY COMMENT '配置键名',
-  \`value\` TEXT NOT NULL COMMENT '配置内容值'
+  `key` VARCHAR(64) PRIMARY KEY COMMENT '配置键名',
+  `value` TEXT NOT NULL COMMENT '配置内容值'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置信息表';
 
 
@@ -128,11 +128,12 @@ CREATE TABLE settings (
 
 -- 11.1 用户数据种子
 INSERT INTO users (id, name, avatar, role, role_type, points_balance, points_earned_lifetime, penalties_count, points_deducted_total) VALUES
-('u-1', '张建国', '/avatars/director.png', '项目总监 (效能主管)', 'Admin', 500, 500, 0, 0),
-('u-2', '李明', '/avatars/senior_dev.png', '资深保障专家 (高级研发)', 'Engineer', 1200, 4800, 0, 0),
-('u-3', '王芳', '/avatars/dev.png', '研发保障工程师 (开发工程师)', 'Engineer', 850, 3200, 0, 0),
-('u-4', '赵勇', '/avatars/designer.png', '体验设计专家 (UI/UX)', 'Designer', 400, 2100, 0, 0),
-('u-5', '刘洋', '/avatars/qa.png', '质量保障工程师 (QA测试)', 'QA', 600, 2800, 0, 0);
+('u-1', '宋鹏', '/avatars/director.png', '项目总监', 'Admin', 500, 500, 0, 0),
+('u-2', '王方超', '/avatars/senior_dev.png', '资深保障专家', 'Engineer', 1200, 4800, 0, 0),
+('u-3', '刘光东', '/avatars/dev.png', '研发保障工程师', 'Engineer', 850, 3200, 0, 0),
+('u-4', '张淼', '/avatars/designer.png', '体验设计专家', 'Designer', 400, 2100, 0, 0),
+('u-5', '刘志松', '/avatars/qa.png', '质量保障工程师', 'QA', 600, 2800, 0, 0),
+('u-6', '张辉', '/avatars/director.png', '项目总监', 'Admin', 500, 500, 0, 0);
 
 -- 11.2 战术任务种子
 INSERT INTO missions (id, title, description, base_points, multiplier, status, category, assigned_to, proof_of_work) VALUES
@@ -169,11 +170,11 @@ INSERT INTO duty (id, user_id, shift_start, shift_end, is_active) VALUES
 -- 11.5 系统动态日志事件流
 INSERT INTO feed (id, type, message, timestamp) VALUES
 ('f-1', 'system', 'ePoints 协同管理系统就绪，各项目组成员已接入。', DATE_SUB(NOW(), INTERVAL 10 HOUR)),
-('f-2', 'mission', '李明 成功完成了高价值任务：部署生产环境 K8s 集群双机房热备容灾，获得 1500 积分。', DATE_SUB(NOW(), INTERVAL 8 HOUR)),
-('f-3', 'support', '系统自动排单：李明 极速解决 GPG 签名报错问题，耗时 30 分钟，获得排障激励 150 积分。', DATE_SUB(NOW(), INTERVAL 11.5 HOUR));
+('f-2', 'mission', '王方超 成功完成了高价值任务：部署生产环境 K8s 集群双机房热备容灾，获得 1500 积分。', DATE_SUB(NOW(), INTERVAL 8 HOUR)),
+('f-3', 'support', '系统自动排单：王方超 极速解决 GPG 签名报错问题，耗时 30 分钟，获得排障激励 150 积分。', DATE_SUB(NOW(), INTERVAL 11.5 HOUR));
 
 -- 11.6 系统配置初始化
-INSERT INTO settings (\`key\`, \`value\`) VALUES
+INSERT INTO settings (`key`, `value`) VALUES
 ('webhook_url', 'https://open.feishu.cn/open-apis/bot/v2/hook/mock-webhook-url-xyz');
 
 -- 11.7 已解决故障工单种子

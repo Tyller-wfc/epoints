@@ -255,7 +255,7 @@ export class EpointsService {
     await this.ticketRepo.save(ticket);
 
     const assigneeUser = await this.userRepo.findOne({ where: { id: assigneeId } });
-    const assigneeName = assigneeUser ? assigneeUser.name : '李明';
+    const assigneeName = assigneeUser ? assigneeUser.name : '王方超';
 
     const alertLevelText = ticketData.severity === 'Critical' ? '🚨【红色警报】' : '⚠️【系统故障申报】';
     await this.pushFeed('support', `${alertLevelText}${reporter.name} 申报紧急故障：${ticketData.title}。已自动分派给在岗值班员：${assigneeName}！`);

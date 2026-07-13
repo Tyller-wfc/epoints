@@ -32,11 +32,12 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
 
     // Seed Users
     const initialUsers = [
-      { id: "u-1", name: "张建国", role: "项目总监 (效能主管)", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-2", name: "李明", role: "资深保障专家 (高级研发)", roleType: "Engineer", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-3", name: "王芳", role: "研发保障工程师 (开发工程师)", roleType: "Engineer", points_balance: 850, points_earned_lifetime: 3200, avatar: "/avatars/dev.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-4", name: "赵勇", role: "体验设计专家 (UI/UX)", roleType: "Designer", points_balance: 400, points_earned_lifetime: 2100, avatar: "/avatars/designer.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-5", name: "刘洋", role: "质量保障工程师 (QA测试)", roleType: "QA", points_balance: 600, points_earned_lifetime: 2800, avatar: "/avatars/qa.png", penalties_count: 0, points_deducted_total: 0 }
+      { id: "u-1", name: "宋鹏", role: "项目总监", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 },
+      { id: "u-2", name: "王方超", role: "资深保障专家", roleType: "Engineer", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png", penalties_count: 0, points_deducted_total: 0 },
+      { id: "u-3", name: "刘光东", role: "研发保障工程师", roleType: "Engineer", points_balance: 850, points_earned_lifetime: 3200, avatar: "/avatars/dev.png", penalties_count: 0, points_deducted_total: 0 },
+      { id: "u-4", name: "张淼", role: "体验设计专家", roleType: "Designer", points_balance: 400, points_earned_lifetime: 2100, avatar: "/avatars/designer.png", penalties_count: 0, points_deducted_total: 0 },
+      { id: "u-5", name: "刘志松", role: "质量保障工程师", roleType: "QA", points_balance: 600, points_earned_lifetime: 2800, avatar: "/avatars/qa.png", penalties_count: 0, points_deducted_total: 0 },
+      { id: "u-6", name: "张辉", role: "项目总监", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 }
     ];
     await this.userRepo.save(initialUsers);
 
@@ -149,8 +150,8 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     // Seed Feeds
     const initialFeeds = [
       { id: "f-1", type: "system", message: "ePoints 协同管理系统就绪，各项目组成员已接入。", timestamp: new Date(Date.now() - 10 * 3600000) },
-      { id: "f-2", type: "mission", message: "李明 成功完成了高价值任务：部署生产环境 K8s 集群双机房热备容灾，获得 1500 积分。", timestamp: new Date(Date.now() - 8 * 3600000) },
-      { id: "f-3", type: "support", message: "系统自动排单：李明 极速解决 GPG 签名报错问题，耗时 30 分钟，获得排障激励 150 积分。", timestamp: new Date(Date.now() - 11.5 * 3600000) }
+      { id: "f-2", type: "mission", message: "王方超 成功完成了高价值任务：部署生产环境 K8s 集群双机房热备容灾，获得 1500 积分。", timestamp: new Date(Date.now() - 8 * 3600000) },
+      { id: "f-3", type: "support", message: "系统自动排单：王方超 极速解决 GPG 签名报错问题，耗时 30 分钟，获得排障激励 150 积分。", timestamp: new Date(Date.now() - 11.5 * 3600000) }
     ];
     await this.feedRepo.save(initialFeeds);
 
