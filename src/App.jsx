@@ -14,7 +14,8 @@ import {
   resolveTicket, 
   setActiveDuty,
   penalizeNegligence,
-  flagSecondaryIncident
+  flagSecondaryIncident,
+  acknowledgeTicket
 } from './data/mockData';
 
 import Dashboard from './components/Dashboard';
@@ -104,6 +105,10 @@ function App() {
 
   const handleFlagSecondaryIncident = (ticketId) => {
     setState(flagSecondaryIncident(ticketId));
+  };
+
+  const handleAcknowledgeTicket = (ticketId, userId) => {
+    setState(acknowledgeTicket(ticketId, userId));
   };
 
   return (
@@ -274,6 +279,7 @@ function App() {
             onResolveTicket={handleResolveTicket}
             onPenalizeNegligence={handlePenalizeNegligence}
             onFlagSecondaryIncident={handleFlagSecondaryIncident}
+            onAcknowledgeTicket={handleAcknowledgeTicket}
           />
         )}
         {activeTab === 'admin' && (

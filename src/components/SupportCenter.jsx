@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, PhoneCall, MessageSquare, AlertTriangle, CheckSquare, Clock, Coins, User, Users, AlertOctagon } from 'lucide-react';
 
-export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, onPenalizeNegligence, onFlagSecondaryIncident }) {
+export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, onPenalizeNegligence, onFlagSecondaryIncident, onAcknowledgeTicket }) {
   const { tickets, duty, users, currentUserId } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
@@ -72,15 +72,18 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
     return `${minutes} 分钟`;
   };
 
-  // 根据已流逝时间预测当前的极速倍率奖励
-  const getPredictiveMultiplier = (isoCreatedAt) => {
-    const created = new Date(isoCreatedAt).getTime();
+  // 根据接单后已流逝时间预测当前的 MTTR 极速恢复倍率奖励
+  const getPredictiveMultiplier = (ticket) => {
+    if (ticket.status === "Open") return { text: "等待接单响应中 (15分钟内响应)", color: 'var(--accent-orange)' };
+    if (ticket.status === "Resolved") return { text: "排障已完成", color: 'var(--accent-green)' };
+    
+    const acknowledged = new Date(ticket.acknowledged_at).getTime();
     const now = Date.now();
-    const diffMinutes = (now - created) / 60000;
-    if (diffMinutes <= 10) return { text: "极速修复 1.5x 效能积分加成中", color: 'var(--accent-green)' };
-    if (diffMinutes <= 30) return { text: "快速修复 1.2x 效能积分加成中", color: 'var(--accent-cyan)' };
-    if (diffMinutes > 120) return { text: "超时解决 0.8x 积分衰减", color: 'var(--accent-red)' };
-    return { text: "标准完成 1.0x 积分结算", color: 'var(--text-secondary)' };
+    const diffMinutes = (now - acknowledged) / 60000;
+    if (diffMinutes <= 30) return { text: "黄金30分钟 1.5x 恢复倍率中", color: 'var(--accent-green)' };
+    if (diffMinutes <= 60) return { text: "白银60分钟 1.2x 恢复倍率中", color: 'var(--accent-cyan)' };
+    if (diffMinutes > 120) return { text: "超时恢复 0.7x 积分衰减中", color: 'var(--accent-red)' };
+    return { text: "标准恢复 1.0x 积分结算中", color: 'var(--text-secondary)' };
   };
 
   // 格式化时间
@@ -237,7 +240,7 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
               const isAssignedToMe = t.assigned_to === currentUserId;
               const isCritical = t.severity === "Critical";
 
-              const pred = getPredictiveMultiplier(t.created_at);
+              const pred = getPredictiveMultiplier(t);
 
               return (
                 <div
@@ -277,8 +280,8 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                           {t.points_earned_actual || t.points_reward} eP
                         </span>
                       </div>
-                      <span className={`badge ${isResolved ? 'green' : 'orange'}`}>
-                        {isResolved ? "已解决" : "解决中"}
+                      <span className={`badge ${t.status === 'Resolved' ? 'green' : t.status === 'Acknowledged' ? 'cyan' : 'orange'}`}>
+                        {t.status === 'Resolved' ? '已排除' : t.status === 'Acknowledged' ? '处理中' : '待接单'}
                       </span>
                     </div>
                   </div>
@@ -293,19 +296,31 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                       <span>上报人: <strong>{reporter.name}</strong></span>
                       <span>故障处理负责人: <strong>{assignee.name} {isAssignedToMe && <span style={{ color: 'var(--accent-cyan)' }}>(您)</span>}</strong></span>
                       <span>上报时间: {formatDateTime(t.created_at)}</span>
+                      {t.acknowledged_at && (
+                        <span>接单时间: {formatDateTime(t.acknowledged_at)} (MTTA 响应: {t.mtta_minutes} 分钟)</span>
+                      )}
                     </div>
 
-                    {!isResolved ? (
+                    {t.status === "Open" && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-orange)' }}>
                         <Clock size={12} />
-                        <span>流逝时长: <strong style={{ color: 'var(--text-primary)' }}>{getElapsedText(t.created_at)}</strong></span>
+                        <span>等待接单: <strong style={{ color: 'var(--text-primary)' }}>{getElapsedText(t.created_at)}</strong></span>
                         <span style={{ color: 'var(--text-muted)' }}>|</span>
                         <span style={{ color: pred.color, fontWeight: 'bold' }}>{pred.text}</span>
                       </div>
-                    ) : (
+                    )}
+                    {t.status === "Acknowledged" && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-cyan)' }}>
+                        <Clock size={12} />
+                        <span>开始恢复: <strong style={{ color: 'var(--text-primary)' }}>{getElapsedText(t.acknowledged_at)}</strong></span>
+                        <span style={{ color: 'var(--text-muted)' }}>|</span>
+                        <span style={{ color: pred.color, fontWeight: 'bold' }}>{pred.text}</span>
+                      </div>
+                    )}
+                    {t.status === "Resolved" && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-green)' }}>
                         <CheckSquare size={12} />
-                        <span>修复报告: {t.resolution_note}</span>
+                        <span>SLA 恢复完成 (MTTR: {t.mttr_minutes} 分钟) | 修复报告: {t.resolution_note}</span>
                         {t.resolved_at && <span>({formatDateTime(t.resolved_at)} 排除)</span>}
                       </div>
                     )}
@@ -314,13 +329,21 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                   {/* 解决按钮和输入表单 */}
                   {!isResolved && isAssignedToMe && (
                     <div style={{ borderTop: '1px dashed var(--border-cyan)', marginTop: '12px', paddingTop: '12px' }}>
-                      {resolvingTicketId === t.id ? (
+                      {t.status === "Open" ? (
+                        <button
+                          className="cyber-btn success animate-pulse"
+                          style={{ width: '100%', padding: '8px', fontSize: '0.8rem', fontWeight: 'bold' }}
+                          onClick={() => onAcknowledgeTicket(t.id, currentUserId)}
+                        >
+                          ⚡ 确认接单响应，开始排障（停止 MTTA SLA 响应计时）
+                        </button>
+                      ) : resolvingTicketId === t.id ? (
                         <form onSubmit={(e) => handleResolveClick(e, t.id)} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <input
                             type="text"
                             className="cyber-input"
                             required
-                            placeholder="请输入故障修复报告（如：已扩容集群节点，清除无用缓存，服务响应恢复）..."
+                            placeholder="请输入故障修复报告（如：已重新挂载磁盘，清理无用缓存，服务响应恢复正常）..."
                             value={resolutionNote}
                             onChange={(e) => setResolutionNote(e.target.value)}
                             style={{ fontSize: '0.8rem', flex: 1 }}
@@ -335,10 +358,10 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                       ) : (
                         <button
                           className="cyber-btn success"
-                          style={{ width: '100%', padding: '6px', fontSize: '0.75rem' }}
+                          style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
                           onClick={() => setResolvingTicketId(t.id)}
                         >
-                          <CheckSquare size={14} /> 我已解决此故障，申请结算排障积分
+                          <CheckSquare size={14} /> 我已解决此故障，申请结算排障积分（停止 MTTR SLA 恢复计时）
                         </button>
                       )}
                     </div>
@@ -348,7 +371,7 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', borderTop: '1px dashed rgba(255,255,255,0.05)', marginTop: '12px', paddingTop: '10px' }}>
                     <span className="badge muted" style={{ fontSize: '0.65rem' }}>主管效能审计</span>
                     
-                    {!isResolved && (
+                    {t.status === "Open" && (
                       t.negligence_penalized ? (
                         <span style={{ fontSize: '0.75rem', color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <AlertOctagon size={12} /> 已扣分警告 (接单慢)

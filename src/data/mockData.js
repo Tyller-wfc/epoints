@@ -443,7 +443,56 @@ export const raiseAlert = (ticketData) => {
   return { state: getAppState(), newTicketId: newTicket.id };
 };
 
-// 解决工单，计算极速修复加分并下发
+// 确认接单，处理 MTTA SLA 响应时间
+export const acknowledgeTicket = (ticketId, userId) => {
+  const state = getAppState();
+  const ticket = state.tickets.find(t => t.id === ticketId);
+  if (!ticket || ticket.status !== "Open") return getAppState();
+
+  let quickAckReward = 0;
+  const created = new Date(ticket.created_at).getTime();
+  const acknowledgedAt = new Date();
+  const elapsedMinutes = (acknowledgedAt.getTime() - created) / 60000;
+
+  // 黄金 10 分钟响应
+  if (elapsedMinutes <= 10) {
+    quickAckReward = 50;
+  }
+
+  const updatedTickets = state.tickets.map(t => {
+    if (t.id === ticketId) {
+      return {
+        ...t,
+        status: "Acknowledged",
+        acknowledged_at: acknowledgedAt.toISOString(),
+        mtta_minutes: Math.round(elapsedMinutes),
+        quick_ack_rewarded: quickAckReward
+      };
+    }
+    return t;
+  });
+
+  const user = state.users.find(u => u.id === ticket.assigned_to);
+  const updatedUsers = state.users.map(u => {
+    if (u.id === ticket.assigned_to && quickAckReward > 0) {
+      return {
+        ...u,
+        points_balance: u.points_balance + quickAckReward,
+        points_earned_lifetime: u.points_earned_lifetime + quickAckReward
+      };
+    }
+    return u;
+  });
+
+  pushFeed("support", `⚡【故障接单】值班员 ${user.name} 已接单响应故障：${ticket.title} (响应耗时: ${Math.round(elapsedMinutes)}分钟${quickAckReward > 0 ? '，获得极速响应奖励 +50 eP' : ''})。`);
+
+  saveState("ep_tickets", updatedTickets);
+  saveState("ep_users", updatedUsers);
+
+  return getAppState();
+};
+
+// 解决工单，计算极速修复加分并下发 (处理 MTTR SLA 恢复时间)
 export const resolveTicket = (ticketId, resolutionNote) => {
   const state = getAppState();
   let pointsEarned = 0;
@@ -451,18 +500,18 @@ export const resolveTicket = (ticketId, resolutionNote) => {
   let ticketTitle = "";
 
   const tickets = state.tickets.map(t => {
-    if (t.id === ticketId && t.status !== "Resolved") {
+    if (t.id === ticketId && t.status === "Acknowledged") {
       ticketTitle = t.title;
       resolverId = t.assigned_to;
-      const created = new Date(t.created_at).getTime();
+      const acknowledged = new Date(t.acknowledged_at).getTime();
       const now = Date.now();
-      const elapsedMinutes = (now - created) / 60000;
+      const elapsedMinutes = (now - acknowledged) / 60000;
 
-      // 极速排障算法：如果是在 10 分钟内解决，积分获得 1.5 倍加成，30 分钟内 1.2 倍加成，超过 2 小时衰减至 0.8 倍
+      // MTTR 恢复时效倍率：30分钟内 1.5x，60分钟内 1.2x，超过120分钟 0.7x
       let multiplier = 1.0;
-      if (elapsedMinutes <= 10) multiplier = 1.5;
-      else if (elapsedMinutes <= 30) multiplier = 1.2;
-      else if (elapsedMinutes > 120) multiplier = 0.8;
+      if (elapsedMinutes <= 30) multiplier = 1.5;
+      else if (elapsedMinutes <= 60) multiplier = 1.2;
+      else if (elapsedMinutes > 120) multiplier = 0.7;
 
       pointsEarned = Math.round(t.points_reward * multiplier);
 
@@ -471,7 +520,8 @@ export const resolveTicket = (ticketId, resolutionNote) => {
         status: "Resolved",
         resolved_at: new Date().toISOString(),
         resolution_note: resolutionNote,
-        points_earned_actual: pointsEarned
+        points_earned_actual: pointsEarned,
+        mttr_minutes: Math.round(elapsedMinutes)
       };
     }
     return t;
@@ -490,7 +540,7 @@ export const resolveTicket = (ticketId, resolutionNote) => {
       return u;
     });
     saveState("ep_users", users);
-    pushFeed("support", `✅【故障排除】值班员 ${resolver.name} 成功修复了故障：${ticketTitle}。快速排障，结算积分奖赏 ${pointsEarned} ePoints。`);
+    pushFeed("support", `✅【故障排除】值班员 ${resolver.name} 成功修复了故障：${ticketTitle}。SLA 恢复耗时: ${Math.round((Date.now() - new Date(state.tickets.find(t => t.id === ticketId).acknowledged_at).getTime()) / 60000)}分钟，结算积分奖赏 ${pointsEarned} eP。`);
   }
 
   saveState("ep_tickets", tickets);
@@ -578,6 +628,7 @@ export const flagSecondaryIncident = (ticketId) => {
       return {
         ...t,
         status: "Open",
+        acknowledged_at: null,
         resolved_at: null,
         resolution_note: "",
         points_earned_actual: 0,
