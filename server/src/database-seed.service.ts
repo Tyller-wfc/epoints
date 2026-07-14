@@ -8,6 +8,8 @@ import { Duty } from './entities/duty.entity';
 import { Ticket } from './entities/ticket.entity';
 import { Feed } from './entities/feed.entity';
 import { Setting } from './entities/setting.entity';
+import * as bcrypt from 'bcryptjs';
+import { Credential } from './entities/credential.entity';
 
 @Injectable()
 export class DatabaseSeedService implements OnApplicationBootstrap {
@@ -19,11 +21,18 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     @InjectRepository(Ticket) private readonly ticketRepo: Repository<Ticket>,
     @InjectRepository(Feed) private readonly feedRepo: Repository<Feed>,
     @InjectRepository(Setting) private readonly settingRepo: Repository<Setting>,
+    @InjectRepository(Credential) private readonly credentialRepo: Repository<Credential>,
   ) {}
 
   async onApplicationBootstrap() {
     const userCount = await this.userRepo.count();
     if (userCount > 0) {
+      const users = await this.userRepo.find();
+      const passwordHash = await bcrypt.hash('demo123', 12);
+      for (const user of users) {
+        const exists = await this.credentialRepo.findOne({ where: { userId: user.id } });
+        if (!exists) await this.credentialRepo.save({ userId: user.id, username: user.id.replace('-', ''), passwordHash });
+      }
       console.log('Database already initialized. Skipping seed.');
       return;
     }
@@ -31,15 +40,16 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     console.log('Database is empty. Seeding initial ePoints data...');
 
     // Seed Users
+    const passwordHash = await bcrypt.hash('demo123', 12);
     const initialUsers = [
-      { id: "u-1", name: "宋鹏", role: "项目总监", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-2", name: "王方超", role: "资深保障专家", roleType: "Engineer", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-3", name: "刘光东", role: "研发保障工程师", roleType: "Engineer", points_balance: 850, points_earned_lifetime: 3200, avatar: "/avatars/dev.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-4", name: "张淼", role: "体验设计专家", roleType: "Designer", points_balance: 400, points_earned_lifetime: 2100, avatar: "/avatars/designer.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-5", name: "刘志松", role: "质量保障工程师", roleType: "QA", points_balance: 600, points_earned_lifetime: 2800, avatar: "/avatars/qa.png", penalties_count: 0, points_deducted_total: 0 },
-      { id: "u-6", name: "张辉", role: "项目总监", roleType: "Admin", points_balance: 500, points_earned_lifetime: 500, avatar: "/avatars/director.png", penalties_count: 0, points_deducted_total: 0 }
+      { id: "u-2", name: "王方超", role: "运维工程师", roleType: "Admin", points_balance: 1200, points_earned_lifetime: 4800, avatar: "/avatars/senior_dev.png", penalties_count: 0, points_deducted_total: 0 }
     ];
     await this.userRepo.save(initialUsers);
+    await this.credentialRepo.save(initialUsers.map((user) => ({
+      userId: user.id,
+      username: user.id.replace('-', ''),
+      passwordHash,
+    })));
 
     // Seed Missions
     const initialMissions = [
@@ -72,7 +82,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
         base_points: 500,
         multiplier: 1.2,
         status: "In Progress",
-        assigned_to: "u-4",
+        assigned_to: "u-2",
         proof_of_work: "",
         category: "Design"
       },
@@ -83,7 +93,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
         base_points: 400,
         multiplier: 1.0,
         status: "Pending Verification",
-        assigned_to: "u-5",
+        assigned_to: "u-2",
         proof_of_work: "已完成测试用例编写，代码库 PR 链接: github.com/epoints/corp-web/pull/239。本地通过 50 轮并发压力测试，内存曲线稳定。",
         category: "QA"
       },
@@ -124,8 +134,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
 
     // Seed Duty
     const initialDuty = [
-      { id: "d-1", user_id: "u-2", shift_start: "09:00", shift_end: "18:00", is_active: true },
-      { id: "d-2", user_id: "u-3", shift_start: "18:00", shift_end: "09:00", is_active: false }
+      { id: "d-1", user_id: "u-2", shift_start: "00:00", shift_end: "24:00", is_active: true }
     ];
     await this.dutyRepo.save(initialDuty);
 
@@ -133,7 +142,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     const initialTickets = [
       {
         id: "t-1",
-        reporter_id: "u-4",
+        reporter_id: "u-2",
         title: "主代码仓库推送报错，提示 GPG 签名校验失败",
         description: "开发在推送代码到主分支时抛出 GPG signature verify failed 错误，阻塞了当天版本的合并发布，影响开发线。",
         severity: "High",
@@ -158,7 +167,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     // Seed Settings
     const defaultWebhook = {
       key: 'webhook_url',
-      value: 'https://open.feishu.cn/open-apis/bot/v2/hook/mock-webhook-url-xyz'
+      value: ''
     };
     await this.settingRepo.save(defaultWebhook);
 

@@ -1,20 +1,30 @@
 import React, { useState } from 'react';
-import { Sliders, PlusCircle, Check, X, ShieldAlert, SlidersHorizontal, ShoppingCart, UserCheck } from 'lucide-react';
+import { PlusCircle, Check, X, SlidersHorizontal, ShoppingCart, UserCheck, Send, Save, Power } from 'lucide-react';
+import AttachmentPicker from './AttachmentPicker';
+import PersonnelManager from './PersonnelManager';
 
-export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onUpdateWebhookUrl }) {
-  const { missions, users, duty, currentUserId, webhookUrl, transactions = [] } = state;
+export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onUpdateWecomConfig, onTestWecomWebhook, onLoadPersonnel, onUpdatePersonnel, onCreatePersonnel, onDeletePersonnel, onUpdatePersonnelAvatar, onResetPersonnelAvatar, onPreviewMissionRecipients }) {
+  const { missions, users, duty, currentUserId, wecomWebhook = {}, transactions = [], roles = [], taskDomains = [] } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
   const isAdmin = currentUser.roleType === "Admin";
 
-  // Webhook 输入框状态
-  const [webhookInput, setWebhookInput] = useState(webhookUrl || "");
+  const [webhookInput, setWebhookInput] = useState("");
+  const [mentionInput, setMentionInput] = useState((wecomWebhook.mentionMobiles || []).join(', '));
+  const [webhookStatus, setWebhookStatus] = useState(null);
+  const [webhookBusy, setWebhookBusy] = useState(false);
 
   // 新任务表单状态
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newBase, setNewBase] = useState(500);
-  const [newCat, setNewCat] = useState("Development");
+  const [newPrimaryDomain, setNewPrimaryDomain] = useState("");
+  const [newSecondaryDomains, setNewSecondaryDomains] = useState([]);
+  const [newPriority, setNewPriority] = useState("Normal");
+  const [recipientPreview, setRecipientPreview] = useState(null);
   const [newMult, setNewMult] = useState(1.0);
+  const [newFiles, setNewFiles] = useState([]);
+  const [missionSubmitting, setMissionSubmitting] = useState(false);
+  const [missionError, setMissionError] = useState('');
 
   // 倍率临时状态
   const [tempMultipliers, setTempMultipliers] = useState({});
@@ -25,23 +35,28 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   // 待发放商品 (从 transactions 里捞)
   const pendingDeliveries = transactions.filter(t => t.status === "Pending Delivery");
 
-  const handleCreateMissionSubmit = (e) => {
+  const handleCreateMissionSubmit = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-
-    onCreateMission({
-      title: newTitle,
-      description: newDesc,
-      base_points: newBase,
-      category: newCat,
-      multiplier: newMult
-    });
-
-    setNewTitle("");
-    setNewDesc("");
-    setNewBase(500);
-    setNewCat("Development");
-    setNewMult(1.0);
+    setMissionSubmitting(true);
+    setMissionError('');
+    try {
+      const primaryDomainId = newPrimaryDomain || taskDomains[0]?.id;
+      await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId, secondaryDomainIds: JSON.stringify(newSecondaryDomains) }, newFiles);
+      setNewTitle("");
+      setNewDesc("");
+      setNewBase(500);
+      setNewPrimaryDomain("");
+      setNewSecondaryDomains([]);
+      setNewPriority("Normal");
+      setRecipientPreview(null);
+      setNewMult(1.0);
+      setNewFiles([]);
+    } catch (error) {
+      setMissionError(error.message || '任务发布失败');
+    } finally {
+      setMissionSubmitting(false);
+    }
   };
 
   const handleMultiplierChangeLocal = (missionId, val) => {
@@ -57,23 +72,30 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     onUpdateMultiplier(missionId, val);
   };
 
-  const handleWebhookSubmit = (e) => {
+  const parseMobiles = () => mentionInput.split(/[,，;；\s]+/).map(value => value.trim()).filter(Boolean);
+
+  const handleWebhookSubmit = async (e) => {
     e.preventDefault();
-    onUpdateWebhookUrl(webhookInput);
+    if (!webhookInput.trim() && !wecomWebhook.configured) {
+      setWebhookStatus({ type: 'error', message: '请输入企业微信群机器人 Webhook 地址' });
+      return;
+    }
+    setWebhookBusy(true);
+    setWebhookStatus(null);
+    try {
+      await onUpdateWecomConfig(webhookInput.trim() || undefined, parseMobiles());
+      setWebhookInput('');
+      setWebhookStatus({ type: 'success', message: '企业微信提醒配置已保存' });
+    } catch (error) {
+      setWebhookStatus({ type: 'error', message: error.message });
+    } finally {
+      setWebhookBusy(false);
+    }
   };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
       
-      {!isAdmin && (
-        <div style={{ padding: '12px 20px', background: 'rgba(255,75,75,0.1)', border: '1px solid var(--accent-red)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <ShieldAlert size={16} className="glow-text-red" />
-          <span style={{ fontSize: '0.85rem', color: 'var(--accent-red)' }}>
-            ⚠️ <strong>当前用户非效能主管权限：</strong>您现在是以开发/测试人员身份浏览管理后台。此处操作已被特别放开，用于方便您的功能演练。
-          </span>
-        </div>
-      )}
-
       {/* 待验证成果 & 待发放福利 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
         
@@ -164,7 +186,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                   <div key={t.id} style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-muted)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ color: 'var(--text-bright)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                        {item.image} {item.title}
+                        {typeof item.image === 'string' && (/^https?:\/\//.test(item.image) || item.image.startsWith('/api/')) ? <img className="reward-visual" src={item.image} alt="" style={{ width: 24, height: 24, verticalAlign: 'middle', marginRight: '6px' }} /> : <>{item.image} </>}{item.title}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                         申请人: <strong>{user.name}</strong> | 消耗积分: {t.points_spent} eP
@@ -292,7 +314,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
       </div>
 
       {/* 发布新任务 */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
+      <div className="glass-panel" style={{ order: -2, padding: '24px' }}>
         <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <PlusCircle size={18} />
           发布新项目任务
@@ -356,100 +378,103 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
               </div>
             </div>
 
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>对应专业领域</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>主任务领域
               <select
                 className="cyber-select"
-                value={newCat}
-                onChange={(e) => setNewCat(e.target.value)}
+                value={newPrimaryDomain || taskDomains[0]?.id || ''}
+                onChange={(e) => { setNewPrimaryDomain(e.target.value); setNewSecondaryDomains(items => items.filter(id => id !== e.target.value)); setRecipientPreview(null); }}
+                style={{ marginTop: '6px' }}
               >
-                <option value="Development">Development (研发)</option>
-                <option value="Design">Design (设计)</option>
-                <option value="QA">QA (质量测试)</option>
-                <option value="Operations">Operations (运维保障)</option>
+                {taskDomains.map(domain => <option value={domain.id} key={domain.id}>{domain.name}</option>)}
               </select>
+              </label>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>优先级
+                <select className="cyber-select" value={newPriority} onChange={(e) => setNewPriority(e.target.value)} style={{ marginTop: '6px' }}>
+                  <option value="Normal">普通</option><option value="High">高</option><option value="Critical">紧急</option>
+                </select>
+              </label>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>次要任务领域（可多选）</label>
+              <div className="domain-selector">
+                {taskDomains.filter(domain => domain.id !== (newPrimaryDomain || taskDomains[0]?.id)).map(domain => <label key={domain.id} className={newSecondaryDomains.includes(domain.id) ? 'selected' : ''}><input type="checkbox" checked={newSecondaryDomains.includes(domain.id)} onChange={() => { setNewSecondaryDomains(items => items.includes(domain.id) ? items.filter(id => id !== domain.id) : [...items, domain.id]); setRecipientPreview(null); }} />{domain.name}</label>)}
+              </div>
+            </div>
+
+            <div className="recipient-preview-box">
+              <button type="button" disabled={!isAdmin} onClick={async () => {
+                try { setRecipientPreview(await onPreviewMissionRecipients({ primaryDomainId: newPrimaryDomain || taskDomains[0]?.id, secondaryDomainIds: newSecondaryDomains })); }
+                catch (error) { setMissionError(error.message); }
+              }}>预览企业微信提醒人员</button>
+              {recipientPreview && <div><strong>将 @ {recipientPreview.mentionCount} 人</strong>{recipientPreview.recipients.length ? recipientPreview.recipients.map(item => <span key={item.userId}>{item.name} · {item.roleNames.join('/')}{item.mentioned ? ' · 将@' : ' · 协作'}</span>) : <span>当前领域未匹配到可用人员</span>}</div>}
             </div>
 
             <div style={{ marginTop: 'auto', paddingTop: '10px' }}>
-              <button type="submit" className="cyber-btn success" style={{ width: '100%', height: '42px' }}>
-                <PlusCircle size={16} /> 发布该任务至公开看板
+              <button type="submit" disabled={missionSubmitting || !isAdmin} className="cyber-btn success" style={{ width: '100%', height: '42px' }}>
+                <PlusCircle size={16} /> {!isAdmin ? '仅管理员可发布任务' : missionSubmitting ? '正在上传并发布...' : '发布该任务至公开看板'}
               </button>
             </div>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <AttachmentPicker files={newFiles} onChange={setNewFiles} disabled={missionSubmitting} />
+            {missionError && <div className="attachment-error" style={{ marginTop: '8px' }}>{missionError}</div>}
           </div>
         </form>
       </div>
 
-      {/* 50人团队轻量级：飞书/企微 Webhook 警报配置 */}
+      {isAdmin && <div style={{ order: -1 }}><PersonnelManager roles={roles} onLoadPersonnel={onLoadPersonnel} onUpdatePersonnel={onUpdatePersonnel} onCreatePersonnel={onCreatePersonnel} onDeletePersonnel={onDeletePersonnel} onUpdatePersonnelAvatar={onUpdatePersonnelAvatar} onResetPersonnelAvatar={onResetPersonnelAvatar} /></div>}
+
+      {/* 企业微信群机器人告警配置 */}
       <div className="glass-panel" style={{ padding: '24px', gridColumn: '1 / -1', marginTop: '12px' }}>
         <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <SlidersHorizontal size={18} />
-          群机器人告警 Webhook 配置 (飞书/企业微信/钉钉)
+          企业微信群机器人提醒
         </h3>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '16px' }}>
-          这是为 <strong>50人以下小团队</strong> 设计的轻量级自动化通知方案。在此处配置您的群机器人 Webhook。当员工在“技术保障中心”提交 Critical (紧急) 故障申报时，系统除了在页面闪烁红色警戒外，还会自动发送 POST 消息至该 Webhook，实现即时群组艾特值班人，省去昂贵的第三方呼叫系统。
+          发布新项目任务或上报系统故障后，服务端会向企业微信群发送对应摘要，并按手机号提醒相关人员。Webhook 密钥只保存在服务端，页面仅显示脱敏地址。
         </p>
 
-        <form onSubmit={handleWebhookSubmit} style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '280px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: wecomWebhook.configured ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: '0.8rem' }}>
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'currentColor' }} />
+          {wecomWebhook.configured ? `已启用：${wecomWebhook.maskedUrl}` : '未配置企业微信提醒'}
+        </div>
+
+        <form onSubmit={handleWebhookSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+          <div>
+            <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '6px' }}>群机器人 Webhook</label>
             <input
               type="url"
               className="cyber-input"
               value={webhookInput}
               onChange={(e) => setWebhookInput(e.target.value)}
-              placeholder="请输入企业微信/飞书/钉钉群机器人 Webhook 地址 (https://...)"
+              placeholder={wecomWebhook.configured ? '留空则继续使用当前地址' : 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...'}
               style={{ fontSize: '0.85rem', width: '100%' }}
             />
           </div>
-          <button type="submit" className="cyber-btn success" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
-            保存配置
-          </button>
-          <button 
-            type="button" 
-            className="cyber-btn"
-            style={{ padding: '8px 16px', fontSize: '0.8rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
-            onClick={async () => {
-              if (!webhookInput.startsWith("http")) {
-                alert("请先输入有效的 Webhook URL 并保存！");
-                return;
-              }
-              // 测试发送
+          <div>
+            <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '6px' }}>需要 @ 的手机号（逗号分隔）</label>
+            <input className="cyber-input" value={mentionInput} onChange={(e) => setMentionInput(e.target.value)} placeholder="13800138000, 13900139000" style={{ fontSize: '0.85rem' }} />
+          </div>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button type="submit" disabled={webhookBusy || !isAdmin} className="cyber-btn success" style={{ padding: '8px 16px', fontSize: '0.8rem' }}><Save size={15} />保存配置</button>
+            <button type="button" disabled={webhookBusy || !isAdmin || (!webhookInput.trim() && !wecomWebhook.configured)} className="cyber-btn" style={{ padding: '8px 16px', fontSize: '0.8rem' }} onClick={async () => {
+              setWebhookBusy(true); setWebhookStatus(null);
               try {
-                const payload = {
-                  msg_type: "post",
-                  content: {
-                    post: {
-                      zh_cn: {
-                        title: "🟢 ePoints 群机器人通道测试",
-                        content: [
-                          [{ tag: "text", text: `这是一条来自 ePoints 的测试消息。\n` }],
-                          [{ tag: "text", text: `当前配置生效状态: 联通正常\n` }],
-                          [{ tag: "text", text: "联调测试完毕，即时通讯接入成功！" }]
-                        ]
-                      }
-                    }
-                  }
-                };
-                const genericPayload = {
-                  msgtype: "markdown",
-                  markdown: {
-                    content: "### 🟢 ePoints 群机器人通道测试\n> 这是一条来自 ePoints 敏捷协同系统的通道测试消息。联调成功，警报联动已就绪！"
-                  }
-                };
-                
-                await fetch(webhookInput, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(webhookInput.includes("feishu") ? payload : genericPayload),
-                  mode: "no-cors"
-                });
-                alert("测试请求已发送，请检查您的群聊是否有通知收到！");
-              } catch (err) {
-                alert("发送失败，请检查控制台网络报错: " + err.message);
-              }
-            }}
-          >
-            发送测试消息
-          </button>
+                const result = await onTestWecomWebhook(webhookInput.trim() || undefined, parseMobiles());
+                setWebhookStatus({ type: 'success', message: result.message });
+              } catch (error) { setWebhookStatus({ type: 'error', message: error.message }); }
+              finally { setWebhookBusy(false); }
+            }}><Send size={15} />发送测试消息</button>
+            {wecomWebhook.configured && <button type="button" disabled={webhookBusy || !isAdmin} className="cyber-btn danger" style={{ padding: '8px 16px', fontSize: '0.8rem' }} onClick={async () => {
+              setWebhookBusy(true); setWebhookStatus(null);
+              try { await onUpdateWecomConfig('', []); setMentionInput(''); setWebhookStatus({ type: 'success', message: '企业微信提醒已停用' }); }
+              catch (error) { setWebhookStatus({ type: 'error', message: error.message }); }
+              finally { setWebhookBusy(false); }
+            }}><Power size={15} />停用提醒</button>}
+          </div>
+          {webhookStatus && <div role="status" style={{ gridColumn: '1 / -1', padding: '9px 12px', borderLeft: `2px solid ${webhookStatus.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)'}`, background: webhookStatus.type === 'success' ? 'rgba(74,222,128,.07)' : 'rgba(255,75,75,.07)', color: webhookStatus.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: '.8rem' }}>{webhookStatus.message}</div>}
         </form>
       </div>
 

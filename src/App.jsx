@@ -2,13 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { 
   getAppState, 
   resetAppState, 
-  setCurrentUser, 
+  login,
+  logout,
+  restoreSession,
   claimMission, 
   submitProof, 
   verifyMission, 
   updateMultiplier, 
   createMission, 
   purchaseReward, 
+  createReward,
+  updateReward,
+  deleteReward,
   deliverReward, 
   raiseAlert, 
   resolveTicket, 
@@ -16,7 +21,15 @@ import {
   penalizeNegligence,
   flagSecondaryIncident,
   acknowledgeTicket,
-  updateWebhookUrl
+  updateWecomConfig,
+  testWecomWebhook,
+  getPersonnel,
+  updatePersonnel,
+  createPersonnel,
+  deletePersonnel,
+  updatePersonnelAvatar,
+  resetPersonnelAvatar,
+  previewMissionRecipients
 } from './data/mockData';
 
 import Dashboard from './components/Dashboard';
@@ -24,31 +37,81 @@ import MissionBoard from './components/MissionBoard';
 import RewardMarket from './components/RewardMarket';
 import SupportCenter from './components/SupportCenter';
 import AdminConsole from './components/AdminConsole';
+import Login from './components/Login';
+import HeaderAvatarMenu from './components/HeaderAvatarMenu';
+import QuickClaimMission from './components/QuickClaimMission';
 
-import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon } from 'lucide-react';
+import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut } from 'lucide-react';
 
 function App() {
   const [state, setState] = useState(null);
+  const [sessionStatus, setSessionStatus] = useState('loading');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [quickClaimMissionId] = useState(() => new URLSearchParams(window.location.search).get('claimMission'));
+  const [quickClaimStatus, setQuickClaimStatus] = useState(null);
 
-  // 初始化加载数据
   useEffect(() => {
-    getAppState().then(data => setState(data));
+    restoreSession()
+      .then((user) => user ? getAppState() : null)
+      .then((data) => {
+        if (data) setState(data);
+        setSessionStatus(data ? 'authenticated' : 'anonymous');
+      })
+      .catch(() => setSessionStatus('anonymous'));
   }, []);
 
-  if (!state) return <div style={{ color: 'white', padding: '20px', fontFamily: 'monospace' }}>正在载入 ePoints 效能协同系统...</div>;
+  const handleLogin = async (username, password) => {
+    await login(username, password);
+    setState(await getAppState());
+    setSessionStatus('authenticated');
+  };
+
+  const handleLogout = () => {
+    logout();
+    setState(null);
+    setActiveTab('dashboard');
+    setSessionStatus('anonymous');
+  };
+
+  if (sessionStatus === 'loading') return <div className="app-loading">正在验证登录状态...</div>;
+  if (sessionStatus === 'anonymous') return <Login onLogin={handleLogin} />;
+  if (!state) return <div className="app-loading">正在载入 ePoints 效能协同系统...</div>;
 
   const { users, currentUserId, tickets } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
+  const isAdmin = currentUser.roleType === 'Admin';
+
+  const handleQuickClaimMission = async () => {
+    const mission = state.missions.find((item) => item.id === quickClaimMissionId);
+    if (!mission || mission.status !== 'Available') return;
+
+    setQuickClaimStatus({ type: 'loading', message: '正在提交认领...' });
+    try {
+      const nextState = await claimMission(mission.id, currentUser.id);
+      setState(nextState);
+      setQuickClaimStatus({ type: 'success', message: '认领成功，任务已进入进行中。' });
+    } catch (error) {
+      setQuickClaimStatus({ type: 'error', message: error.message || '认领失败，请稍后重试。' });
+    }
+  };
+
+  if (quickClaimMissionId) {
+    return (
+      <QuickClaimMission
+        mission={state.missions.find((item) => item.id === quickClaimMissionId)}
+        users={users}
+        currentUser={currentUser}
+        claimStatus={quickClaimStatus}
+        onClaim={handleQuickClaimMission}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   // 检查是否有未解决的紧急故障 (Critical / 红色警报)
   const hasCriticalAlert = tickets.some(t => t.severity === 'Critical' && t.status !== 'Resolved');
 
   // 对接数据更新逻辑并同步刷新组件状态
-  const handleSetCurrentUser = async (userId) => {
-    setState(await setCurrentUser(userId));
-  };
-
   const handleResetData = async () => {
     if (window.confirm("确定要重置所有模拟数据吗？这会清除本地存储的所有修改记录。")) {
       setState(await resetAppState());
@@ -71,8 +134,42 @@ function App() {
     setState(await updateMultiplier(missionId, newMultiplier));
   };
 
-  const handleCreateMission = async (missionData) => {
-    setState(await createMission(missionData));
+  const handleCreateMission = async (missionData, files) => {
+    setState(await createMission(missionData, files));
+  };
+
+  const handleUpdatePersonnel = async (userId, data) => {
+    const personnel = await updatePersonnel(userId, data);
+    setState(await getAppState());
+    return personnel;
+  };
+
+  const handleCreatePersonnel = async (data) => {
+    const personnel = await createPersonnel(data);
+    setState(await getAppState());
+    return personnel;
+  };
+
+  const handleDeletePersonnel = async (userId) => {
+    const personnel = await deletePersonnel(userId);
+    setState(await getAppState());
+    return personnel;
+  };
+
+  const handleUpdatePersonnelAvatar = async (userId, file) => {
+    await updatePersonnelAvatar(userId, file);
+    const nextState = await getAppState();
+    setState(nextState);
+    const requester = nextState.users.find((user) => user.id === nextState.currentUserId);
+    return requester?.roleType === 'Admin' ? getPersonnel() : nextState.users;
+  };
+
+  const handleResetPersonnelAvatar = async (userId) => {
+    await resetPersonnelAvatar(userId);
+    const nextState = await getAppState();
+    setState(nextState);
+    const requester = nextState.users.find((user) => user.id === nextState.currentUserId);
+    return requester?.roleType === 'Admin' ? getPersonnel() : nextState.users;
   };
 
   const handlePurchaseReward = async (rewardId, userId) => {
@@ -83,12 +180,24 @@ function App() {
     setState(res);
   };
 
+  const handleCreateReward = async (data, imageFile) => {
+    setState(await createReward(data, imageFile));
+  };
+
+  const handleUpdateReward = async (rewardId, data, imageFile) => {
+    setState(await updateReward(rewardId, data, imageFile));
+  };
+
+  const handleDeleteReward = async (rewardId) => {
+    setState(await deleteReward(rewardId));
+  };
+
   const handleDeliverReward = async (txId) => {
     setState(await deliverReward(txId));
   };
 
-  const handleRaiseAlert = async (ticketData) => {
-    const res = await raiseAlert(ticketData);
+  const handleRaiseAlert = async (ticketData, files) => {
+    const res = await raiseAlert(ticketData, files);
     setState(res);
   };
 
@@ -112,8 +221,10 @@ function App() {
     setState(await acknowledgeTicket(ticketId, userId));
   };
 
-  const handleUpdateWebhookUrl = async (url) => {
-    setState(await updateWebhookUrl(url));
+  const handleUpdateWecomConfig = async (url, mentionMobiles) => {
+    const nextState = await updateWecomConfig(url, mentionMobiles);
+    setState(nextState);
+    return nextState;
   };
 
   return (
@@ -229,19 +340,21 @@ function App() {
             <ShieldAlert size={14} /> 技术保障中心
           </button>
 
-          <button 
-            className={`cyber-btn ${activeTab === 'admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('admin')}
-            style={{
-              background: activeTab === 'admin' ? 'var(--accent-cyan)' : 'transparent',
-              borderColor: activeTab === 'admin' ? 'var(--accent-cyan)' : 'transparent',
-              color: activeTab === 'admin' ? 'black' : 'var(--text-primary)',
-              padding: '8px 16px',
-              fontSize: '0.8rem'
-            }}
-          >
-            <Settings size={14} /> 控制台
-          </button>
+          {isAdmin && (
+            <button
+              className={`cyber-btn ${activeTab === 'admin' ? 'active' : ''}`}
+              onClick={() => setActiveTab('admin')}
+              style={{
+                background: activeTab === 'admin' ? 'var(--accent-cyan)' : 'transparent',
+                borderColor: activeTab === 'admin' ? 'var(--accent-cyan)' : 'transparent',
+                color: activeTab === 'admin' ? 'black' : 'var(--text-primary)',
+                padding: '8px 16px',
+                fontSize: '0.8rem'
+              }}
+            >
+              <Settings size={14} /> 控制台
+            </button>
+          )}
         </nav>
 
         {/* 顶部状态角 */}
@@ -250,7 +363,8 @@ function App() {
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>当前登录</div>
             <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{currentUser.name}</div>
           </div>
-          <img src={currentUser.avatar} alt={currentUser.name} style={{ width: '38px', height: '38px', borderRadius: '50%', border: '1px solid var(--border-cyan)' }} />
+          <HeaderAvatarMenu user={currentUser} onUpload={handleUpdatePersonnelAvatar} onReset={handleResetPersonnelAvatar} />
+          <button className="header-icon-btn" onClick={handleLogout} title="退出登录"><LogOut size={17} /></button>
         </div>
 
       </header>
@@ -260,8 +374,7 @@ function App() {
         {activeTab === 'dashboard' && (
           <Dashboard 
             state={state} 
-            onSetCurrentUser={handleSetCurrentUser} 
-            onResetData={handleResetData}
+            onResetData={isAdmin ? handleResetData : undefined}
           />
         )}
         {activeTab === 'missions' && (
@@ -275,6 +388,9 @@ function App() {
           <RewardMarket 
             state={state} 
             onPurchaseReward={handlePurchaseReward}
+            onCreateReward={handleCreateReward}
+            onUpdateReward={handleUpdateReward}
+            onDeleteReward={handleDeleteReward}
           />
         )}
         {activeTab === 'support' && (
@@ -287,7 +403,7 @@ function App() {
             onAcknowledgeTicket={handleAcknowledgeTicket}
           />
         )}
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && isAdmin && (
           <AdminConsole 
             state={state} 
             onVerifyMission={handleVerifyMission} 
@@ -295,7 +411,15 @@ function App() {
             onCreateMission={handleCreateMission}
             onDeliverReward={handleDeliverReward}
             onSetActiveDuty={handleSetActiveDuty}
-            onUpdateWebhookUrl={handleUpdateWebhookUrl}
+            onUpdateWecomConfig={handleUpdateWecomConfig}
+            onTestWecomWebhook={testWecomWebhook}
+            onLoadPersonnel={getPersonnel}
+            onUpdatePersonnel={handleUpdatePersonnel}
+            onCreatePersonnel={handleCreatePersonnel}
+            onDeletePersonnel={handleDeletePersonnel}
+            onUpdatePersonnelAvatar={handleUpdatePersonnelAvatar}
+            onResetPersonnelAvatar={handleResetPersonnelAvatar}
+            onPreviewMissionRecipients={previewMissionRecipients}
           />
         )}
       </main>

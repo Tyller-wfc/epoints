@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, PhoneCall, MessageSquare, AlertTriangle, CheckSquare, Clock, Coins, User, Users, AlertOctagon } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, CheckSquare, Clock, Coins, Users, AlertOctagon } from 'lucide-react';
+import AttachmentPicker from './AttachmentPicker';
+import AttachmentList from './AttachmentList';
 
 export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, onPenalizeNegligence, onFlagSecondaryIncident, onAcknowledgeTicket }) {
   const { tickets, duty, users, currentUserId } = state;
-  const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
   // 过滤当前活动值班人
   const activeDuty = duty.find(d => d.is_active);
@@ -14,6 +15,9 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
   const [ticketDesc, setTicketDesc] = useState("");
   const [severity, setSeverity] = useState("High");
   const [isAlerting, setIsAlerting] = useState(false);
+  const [ticketFiles, setTicketFiles] = useState([]);
+  const [ticketSubmitting, setTicketSubmitting] = useState(false);
+  const [ticketError, setTicketError] = useState('');
 
   // 解决问题状态
   const [resolvingTicketId, setResolvingTicketId] = useState(null);
@@ -28,7 +32,7 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
     return () => clearInterval(timer);
   }, []);
 
-  const handleSubmitAlert = (e) => {
+  const handleSubmitAlert = async (e) => {
     e.preventDefault();
     if (!ticketTitle.trim()) return;
 
@@ -38,16 +42,19 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
       setTimeout(() => setIsAlerting(false), 3000);
     }
 
-    onRaiseAlert({
-      reporter_id: currentUserId,
-      title: ticketTitle,
-      description: ticketDesc,
-      severity: severity
-    });
-
-    setTicketTitle("");
-    setTicketDesc("");
-    setSeverity("High");
+    setTicketSubmitting(true);
+    setTicketError('');
+    try {
+      await onRaiseAlert({ reporter_id: currentUserId, title: ticketTitle, description: ticketDesc, severity }, ticketFiles);
+      setTicketTitle("");
+      setTicketDesc("");
+      setSeverity("High");
+      setTicketFiles([]);
+    } catch (error) {
+      setTicketError(error.message || '故障上报失败');
+    } finally {
+      setTicketSubmitting(false);
+    }
   };
 
   const handleResolveClick = (e, ticketId) => {
@@ -145,24 +152,6 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
             </p>
           </div>
 
-          {/* 快捷联系通道 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px solid var(--border-muted)', paddingTop: '16px' }}>
-            <a 
-              href="tel:10086" 
-              className="cyber-btn success" 
-              style={{ padding: '8px', fontSize: '0.75rem', textDecoration: 'none' }}
-              onClick={(e) => { e.preventDefault(); alert(`正在呼叫值班专线：+86 188-XXXX-8888 (值班员: ${activeOnCallUser.name})`); }}
-            >
-              <PhoneCall size={14} /> 呼叫值班专线
-            </a>
-            <button 
-              className="cyber-btn" 
-              style={{ padding: '8px', fontSize: '0.75rem' }}
-              onClick={() => alert(`已建立专线会话，可直接向企业协同频道 @OnCall_${activeOnCallUser.name} 发送故障截图。`)}
-            >
-              <MessageSquare size={14} /> 开启在线讨论组
-            </button>
-          </div>
         </div>
 
         {/* 紧急故障红警申报舱 */}
@@ -207,23 +196,27 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
               style={{ resize: 'none', fontSize: '0.85rem' }}
             />
 
+            <AttachmentPicker files={ticketFiles} onChange={setTicketFiles} disabled={ticketSubmitting} />
+            {ticketError && <div className="attachment-error">{ticketError}</div>}
+
             <button
               type="submit"
+              disabled={ticketSubmitting}
               className={`cyber-btn danger ${severity === 'Critical' ? 'red-alert-box' : ''}`}
               style={{ width: '100%', height: '42px', fontSize: '0.85rem' }}
             >
               <ShieldAlert size={18} />
-              {severity === 'Critical' ? "触发红色警报・自动派发值班人员" : "上报系统故障"}
+              {ticketSubmitting ? '正在上传并上报...' : severity === 'Critical' ? "触发红色警报・自动派发值班人员" : "上报系统故障"}
             </button>
           </form>
           
           {/* 50人团队轻量级：Webhook 状态指示 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--text-muted)', justifyContent: 'center', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
-            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: (state.webhookUrl && !state.webhookUrl.includes("mock-webhook-url")) ? 'var(--accent-green)' : 'rgba(255,255,255,0.2)' }} />
+            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: state.wecomWebhook?.configured ? 'var(--accent-green)' : 'rgba(255,255,255,0.2)' }} />
             <span>
-              {(state.webhookUrl && !state.webhookUrl.includes("mock-webhook-url")) 
-                ? `即时群聊 Webhook 联动已就绪 (Critical 警报将同步群艾特值班人)` 
-                : `群机器人 Webhook 未配置 (Critical 警报将仅在网页上广播)`
+              {state.wecomWebhook?.configured
+                ? `企业微信提醒已就绪（系统故障上报将同步到群聊）`
+                : `企业微信消息推送未配置（故障将仅在网页广播）`
               }
             </span>
           </div>
@@ -300,6 +293,7 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5', marginBottom: '12px' }}>
                     {t.description}
                   </p>
+                  <AttachmentList attachments={t.attachments} />
 
                   {/* 信息元数据栏 */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-muted)', paddingTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>

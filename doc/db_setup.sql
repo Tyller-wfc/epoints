@@ -1,11 +1,6 @@
 -- ==========================================================
 -- ePoints 效能协同系统 - MySQL 8.0 数据库建库、建表及初始化脚本
--- 连接信息:
--- Host: 192.168.31.180
--- Port: 3306
--- Database: epoints
--- User: root
--- Password: 1qaz@WSX
+-- 连接信息请通过 server/.env 配置，不要在脚本中保存实际凭据。
 -- ==========================================================
 
 -- 1. 创建数据库
@@ -24,9 +19,11 @@ DROP TABLE IF EXISTS users;
 
 -- 3. 创建用户表
 CREATE TABLE users (
-  id VARCHAR(32) PRIMARY KEY,
+  id VARCHAR(255) PRIMARY KEY,
   name VARCHAR(32) NOT NULL COMMENT '姓名',
-  avatar VARCHAR(255) COMMENT '头像相对路径或Base64',
+  avatar VARCHAR(255) COMMENT '头像访问路径',
+  avatar_object_key VARCHAR(700) NULL COMMENT 'MinIO 头像对象键',
+  avatar_mime_type VARCHAR(100) NULL COMMENT '头像 MIME 类型',
   role VARCHAR(255) NOT NULL COMMENT '企业角色描述',
   role_type VARCHAR(16) NOT NULL COMMENT '角色大类: Admin / Engineer / Designer / QA',
   points_balance INT DEFAULT 0 COMMENT '可用积分余额',
@@ -44,7 +41,7 @@ CREATE TABLE missions (
   multiplier FLOAT DEFAULT 1.0 COMMENT '战术倍率',
   status VARCHAR(32) DEFAULT 'Available' COMMENT '任务状态: Available / Claimed / In Progress / Pending Verification / Completed',
   category VARCHAR(64) NOT NULL COMMENT '任务所属分类',
-  assigned_to VARCHAR(32) NULL COMMENT '被派发/认领的用户ID',
+  assigned_to VARCHAR(255) NULL COMMENT '被派发/认领的用户ID',
   proof_of_work TEXT NULL COMMENT '交付成果证明描述或代码链接',
   CONSTRAINT fk_missions_user FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='战术任务看板表';
@@ -64,7 +61,7 @@ CREATE TABLE rewards (
 -- 6. 创建福利核销交易表
 CREATE TABLE transactions (
   id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(32) NOT NULL COMMENT '申请兑换人ID',
+  user_id VARCHAR(255) NOT NULL COMMENT '申请兑换人ID',
   reward_id VARCHAR(32) NOT NULL COMMENT '兑换商品ID',
   points_spent INT NOT NULL COMMENT '消费积分数额',
   status VARCHAR(32) DEFAULT 'Pending Delivery' COMMENT '物流/核销状态: Pending Delivery / Delivered',
@@ -76,7 +73,7 @@ CREATE TABLE transactions (
 -- 7. 创建值班表
 CREATE TABLE duty (
   id VARCHAR(32) PRIMARY KEY,
-  user_id VARCHAR(32) NOT NULL COMMENT '值班员ID',
+  user_id VARCHAR(255) NOT NULL COMMENT '值班员ID',
   shift_start VARCHAR(16) NOT NULL COMMENT '值班开始时间 (HH:mm)',
   shift_end VARCHAR(16) NOT NULL COMMENT '值班结束时间 (HH:mm)',
   is_active TINYINT DEFAULT 0 COMMENT '是否处于活跃在岗状态(0/1)',
@@ -86,11 +83,11 @@ CREATE TABLE duty (
 -- 8. 创建系统警报工单表
 CREATE TABLE tickets (
   id VARCHAR(64) PRIMARY KEY,
-  reporter_id VARCHAR(32) NOT NULL COMMENT '故障申报人ID',
+  reporter_id VARCHAR(255) NOT NULL COMMENT '故障申报人ID',
   title VARCHAR(255) NOT NULL COMMENT '故障简述',
   description TEXT NOT NULL COMMENT '详细排障现场与受影响业务',
   severity VARCHAR(16) NOT NULL COMMENT '警报级别: Critical / High / Medium / Low',
-  assigned_to VARCHAR(32) NOT NULL COMMENT '处理值班员ID',
+  assigned_to VARCHAR(255) NOT NULL COMMENT '处理值班员ID',
   status VARCHAR(32) DEFAULT 'Open' COMMENT '状态: Open(待响应) / Acknowledged(接单中) / Resolved(排除完毕)',
   points_reward INT DEFAULT 100 COMMENT '基础故障解决奖励分',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '上报时间',
@@ -128,19 +125,14 @@ CREATE TABLE settings (
 
 -- 11.1 用户数据种子
 INSERT INTO users (id, name, avatar, role, role_type, points_balance, points_earned_lifetime, penalties_count, points_deducted_total) VALUES
-('u-1', '宋鹏', '/avatars/director.png', '项目总监', 'Admin', 500, 500, 0, 0),
-('u-2', '王方超', '/avatars/senior_dev.png', '资深保障专家', 'Engineer', 1200, 4800, 0, 0),
-('u-3', '刘光东', '/avatars/dev.png', '研发保障工程师', 'Engineer', 850, 3200, 0, 0),
-('u-4', '张淼', '/avatars/designer.png', '体验设计专家', 'Designer', 400, 2100, 0, 0),
-('u-5', '刘志松', '/avatars/qa.png', '质量保障工程师', 'QA', 600, 2800, 0, 0),
-('u-6', '张辉', '/avatars/director.png', '项目总监', 'Admin', 500, 500, 0, 0);
+('u-2', '王方超', '/avatars/senior_dev.png', '运维工程师', 'Admin', 1200, 4800, 0, 0);
 
 -- 11.2 战术任务种子
 INSERT INTO missions (id, title, description, base_points, multiplier, status, category, assigned_to, proof_of_work) VALUES
 ('m-1', '升级企业级微服务脚手架至 React 19 / Vite 6', '全面升级基础框架，解决遗留的编译警告，优化构建时间至 5 秒以内，以提高全局研发部署响应效率。', 600, 1.0, 'Available', 'Development', NULL, NULL),
 ('m-2', '🔥 紧急修复支付结算系统高并发接口超时问题', '在遭遇高负荷峰值时，结算接口响应超过 3 秒，需要重构 Redis 缓存锁并优化数据库查询索引，属于核心攻坚任务。', 1000, 2.0, 'Available', 'Development', NULL, NULL),
-('m-3', '重新设计企业福利商城移动端高保真交互原型', '针对移动端操作手感优化，绘制完整的 UI 规范，包括兑换成功动效、积分余额滚动增加动效等，提升整体用户体验。', 500, 1.2, 'In Progress', 'Design', 'u-4', NULL),
-('m-4', '编写客户数据导出模块端到端集成测试', '完成导出 Excel/PDF 文件的核心逻辑覆盖率至 90% 以上，防止多线程导出时出现内存泄漏导致节点宕机。', 400, 1.0, 'Pending Verification', 'QA', 'u-5', '已完成测试用例编写，代码库 PR 链接: github.com/epoints/corp-web/pull/239。本地通过 50 轮并发压力测试，内存曲线稳定。'),
+('m-3', '重新设计企业福利商城移动端高保真交互原型', '针对移动端操作手感优化，绘制完整的 UI 规范，包括兑换成功动效、积分余额滚动增加动效等，提升整体用户体验。', 500, 1.2, 'In Progress', 'Design', 'u-2', NULL),
+('m-4', '编写客户数据导出模块端到端集成测试', '完成导出 Excel/PDF 文件的核心逻辑覆盖率至 90% 以上，防止多线程导出时出现内存泄漏导致节点宕机。', 400, 1.0, 'Pending Verification', 'QA', 'u-2', '已完成测试用例编写，代码库 PR 链接: github.com/epoints/corp-web/pull/239。本地通过 50 轮并发压力测试，内存曲线稳定。'),
 ('m-5', '部署生产环境 K8s 集群双机房热备容灾', '实现容灾演练，确保当 A 机房完全断网或断电时，B 机房能在 30 秒内全量接管业务请求，保障系统全天候抗击突发故障的能力。', 1500, 1.0, 'Completed', 'Operations', 'u-2', '双机房 Keepalived + DNS 自动切换配置完毕，断开 A 机房主路由后测试切换时长为 18.4s，符合预期。附件报告已发至 Wiki 归档。');
 
 -- 11.3 福利商城商品种子
@@ -164,8 +156,7 @@ INSERT INTO rewards (id, title, description, points_cost, category, image, inven
 
 -- 11.4 值班岗位配置种子
 INSERT INTO duty (id, user_id, shift_start, shift_end, is_active) VALUES
-('d-1', 'u-2', '09:00', '18:00', 1),
-('d-2', 'u-3', '18:00', '09:00', 0);
+('d-1', 'u-2', '00:00', '24:00', 1);
 
 -- 11.5 系统动态日志事件流
 INSERT INTO feed (id, type, message, timestamp) VALUES
@@ -175,8 +166,9 @@ INSERT INTO feed (id, type, message, timestamp) VALUES
 
 -- 11.6 系统配置初始化
 INSERT INTO settings (`key`, `value`) VALUES
-('webhook_url', 'https://open.feishu.cn/open-apis/bot/v2/hook/mock-webhook-url-xyz');
+('webhook_url', ''),
+('webhook_mention_mobiles', '');
 
 -- 11.7 已解决故障工单种子
 INSERT INTO tickets (id, reporter_id, title, description, severity, assigned_to, status, points_reward, created_at, acknowledged_at, resolved_at, resolution_note, points_earned_actual, negligence_penalized, secondary_fault, mtta_minutes, quick_ack_rewarded, mttr_minutes) VALUES
-('t-1', 'u-4', '主代码仓库推送报错，提示 GPG 签名校验失败', '开发在推送代码到主分支时抛出 GPG signature verify failed 错误，阻塞了当天版本的合并发布，影响开发线。', 'High', 'u-2', 'Resolved', 150, DATE_SUB(NOW(), INTERVAL 12 HOUR), DATE_SUB(NOW(), INTERVAL 12 HOUR), DATE_SUB(NOW(), INTERVAL 11.5 HOUR), '已在 GPG 服务端重新分发并信任开发机器的公钥，解决签名阻拦错误。', 150, 0, 0, 1, 0, 30);
+('t-1', 'u-2', '主代码仓库推送报错，提示 GPG 签名校验失败', '开发在推送代码到主分支时抛出 GPG signature verify failed 错误，阻塞了当天版本的合并发布，影响开发线。', 'High', 'u-2', 'Resolved', 150, DATE_SUB(NOW(), INTERVAL 12 HOUR), DATE_SUB(NOW(), INTERVAL 12 HOUR), DATE_SUB(NOW(), INTERVAL 11.5 HOUR), '已在 GPG 服务端重新分发并信任开发机器的公钥，解决签名阻拦错误。', 150, 0, 0, 1, 0, 30);

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Compass, Flame, ShieldAlert, CheckCircle2, Clock, PlayCircle, Send, ExternalLink } from 'lucide-react';
+import { Compass, Flame, CheckCircle2, Clock, PlayCircle, Send, ExternalLink } from 'lucide-react';
+import AttachmentList from './AttachmentList';
 
 export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
-  const { missions, users, currentUserId } = state;
+  const { missions, users, currentUserId, taskDomains = [] } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
   const [activeFilter, setActiveFilter] = useState("ALL");
@@ -12,7 +13,7 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
   const [submittingMissionId, setSubmittingMissionId] = useState(null);
   const [proofText, setProofText] = useState("");
 
-  const categories = ["ALL", "Development", "Design", "QA", "Operations"];
+  const categories = [{ id: 'ALL', name: '全部' }, ...taskDomains];
   const filters = [
     { value: "ALL", label: "全部任务" },
     { value: "Available", label: "可领任务" },
@@ -24,7 +25,7 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
   // 过滤逻辑
   const filteredMissions = missions.filter(m => {
     // 类别过滤
-    if (activeCategory !== "ALL" && m.category !== activeCategory) return false;
+    if (activeCategory !== "ALL" && !m.domains?.some(item => item.domainId === activeCategory)) return false;
     
     // 状态过滤
     if (activeFilter === "ALL") return true;
@@ -81,26 +82,20 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginRight: '8px' }}>专业领域：</span>
           {categories.map(cat => {
-            let label = "全部";
-            if (cat === "Development") label = "研发任务";
-            else if (cat === "Design") label = "体验设计";
-            else if (cat === "QA") label = "质量测试";
-            else if (cat === "Operations") label = "运维保障";
-
             return (
               <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
                 className="cyber-btn"
                 style={{
                   padding: '6px 12px',
                   fontSize: '0.75rem',
-                  background: activeCategory === cat ? 'var(--accent-cyan)' : 'rgba(0, 0, 0, 0.2)',
-                  borderColor: activeCategory === cat ? 'var(--accent-cyan)' : 'var(--border-muted)',
-                  color: activeCategory === cat ? 'black' : 'var(--text-primary)'
+                  background: activeCategory === cat.id ? 'var(--accent-cyan)' : 'rgba(0, 0, 0, 0.2)',
+                  borderColor: activeCategory === cat.id ? 'var(--accent-cyan)' : 'var(--border-muted)',
+                  color: activeCategory === cat.id ? 'black' : 'var(--text-primary)'
                 }}
               >
-                {label}
+                {cat.name}
               </button>
             );
           })}
@@ -139,15 +134,9 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                 <div>
                   {/* 卡片头部：分类与积分 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <span className={`badge ${
-                      m.category === 'Development' ? 'cyan' :
-                      m.category === 'Design' ? 'orange' :
-                      m.category === 'QA' ? 'green' : 'muted'
-                    }`}>
-                      {m.category === 'Development' ? '研发' :
-                       m.category === 'Design' ? '设计' :
-                       m.category === 'QA' ? '质量测试' : '运维保障'}
-                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {(m.domains || []).map(item => <span className={`badge ${item.isPrimary ? 'cyan' : 'muted'}`} key={item.domainId}>{item.domain?.name}{item.isPrimary ? ' · 主' : ''}</span>)}
+                    </div>
                     
                     <div style={{ textAlign: 'right' }}>
                       <div className="military-font" style={{ color: isHighMultiplier ? 'var(--accent-orange)' : 'var(--accent-cyan)', fontWeight: 'bold', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -167,6 +156,7 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.5', marginBottom: '12px' }}>
                     {m.description}
                   </p>
+                  <AttachmentList attachments={m.attachments} />
                 </div>
 
                 {/* 卡片底部：状态与操作 */}

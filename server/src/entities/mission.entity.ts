@@ -23,7 +23,10 @@ export class Mission {
   @Column()
   category: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 20, default: 'Normal' })
+  priority: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
   assigned_to: string;
 
   @Column('text', { nullable: true })

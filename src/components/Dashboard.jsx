@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Award, Coins, TrendingUp, ShieldAlert, ArrowRight, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target, AlertOctagon } from 'lucide-react';
+import { Award, Coins, TrendingUp, ShieldAlert, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target, AlertOctagon } from 'lucide-react';
 
-export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
+export default function Dashboard({ state, onResetData }) {
   const { users, feed, currentUserId } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
@@ -100,24 +100,25 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
         {/* 角色速切面板 */}
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <span className="badge orange">权限演练中心</span>
-            <button 
-              onClick={onResetData} 
-              style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}
-            >
-              [ 重置模拟数据库 ]
-            </button>
+            <span className="badge orange">团队成员</span>
+            {onResetData && (
+              <button
+                onClick={onResetData}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}
+              >
+                [ 重置模拟数据库 ]
+              </button>
+            )}
           </div>
           
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', lineHeight: '1.4' }}>
-            您可以切换不同成员的账号登录系统，体验对应的权限操作。例如切换到“张建国（总监）”可审核成果和调控任务倍率，切换到其他工程师则可以认领任务和申报紧急故障。
+            当前账号已通过身份认证。下方展示组织成员及其岗位信息，账号切换请先退出当前登录。
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
             {users.map(u => (
               <button
                 key={u.id}
-                onClick={() => onSetCurrentUser(u.id)}
                 className={`glass-panel`}
                 style={{
                   display: 'flex',
@@ -126,7 +127,7 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
                   padding: '10px 14px',
                   borderLeft: u.id === currentUserId ? '3px solid var(--accent-cyan)' : '1px solid var(--border-muted)',
                   background: u.id === currentUserId ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 0, 0, 0.2)',
-                  cursor: 'pointer',
+                  cursor: 'default',
                   textAlign: 'left',
                   borderRadius: '4px'
                 }}
@@ -143,7 +144,7 @@ export default function Dashboard({ state, onSetCurrentUser, onResetData }) {
                     已登录 <UserCheck size={12} />
                   </span>
                 ) : (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>切换 <ArrowRight size={12} /></span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>成员</span>
                 )}
               </button>
             ))}

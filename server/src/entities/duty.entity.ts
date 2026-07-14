@@ -5,7 +5,7 @@ export class Duty {
   @PrimaryColumn()
   id: string;
 
-  @Column({ name: 'user_id' })
+  @Column({ name: 'user_id', type: 'varchar', length: 255 })
   user_id: string;
 
   @Column({ name: 'shift_start' })

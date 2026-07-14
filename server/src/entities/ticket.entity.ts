@@ -5,7 +5,7 @@ export class Ticket {
   @PrimaryColumn()
   id: string;
 
-  @Column({ name: 'reporter_id' })
+  @Column({ name: 'reporter_id', type: 'varchar', length: 255 })
   reporter_id: string;
 
   @Column()
@@ -17,7 +17,7 @@ export class Ticket {
   @Column()
   severity: string;
 
-  @Column({ name: 'assigned_to' })
+  @Column({ name: 'assigned_to', type: 'varchar', length: 255 })
   assigned_to: string;
 
   @Column({ default: 'Open' })
