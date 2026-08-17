@@ -40,6 +40,10 @@ cd "$APP_DIR" || log_error "项目目录不存在：$APP_DIR"
 PREV_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 git fetch origin
+
+# 丢弃服务器上可能存在的本地修改（如直接 npm install 产生的锁文件变更）
+git checkout -- . 2>/dev/null || true
+
 git pull origin main
 
 NEW_COMMIT=$(git rev-parse --short HEAD)
