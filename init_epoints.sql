@@ -43,8 +43,11 @@ DELETE FROM feed;
 -- 附件
 DELETE FROM attachments;
 
--- 角色与领域（仅清空用户分配关系；task_domains / roles / role_task_domains 保留基础数据）
+-- 清空角色与领域所有关联数据（含旧数据）
 DELETE FROM user_roles;
+DELETE FROM role_task_domains;
+DELETE FROM task_domains;
+DELETE FROM roles;
 
 -- ------------------------------------------------------------
 -- 第二步：清空用户数据（凭证先删，users 后删）
@@ -111,30 +114,27 @@ VALUES ('webhook_url', '');
 
 -- ------------------------------------------------------------
 -- 第五步：写入基础任务领域（4 个）、角色（3 个）及领域映射
--- 使用 INSERT IGNORE / ON DUPLICATE KEY UPDATE，幂等可重复执行
 -- ------------------------------------------------------------
 
 -- 任务领域
 INSERT INTO task_domains (id, code, name, description, enabled) VALUES
-  ('d-cloud',      'cloud-delivery',       '云原生与交付',   '容器、Kubernetes、CI/CD、发布和容量',             1),
-  ('d-middleware', 'middleware-platform',   '数据库与中间件', '数据库、SQL、缓存、消息队列、网关和存储',         1),
-  ('d-software',   'software',             '应用开发',       '业务功能、前端/后端 API、客户端与脚本',           1),
-  ('d-network',    'network-connectivity', '网络与安全',     '网络路由、VPN、防火墙、安全防护与专线',           1)
-ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), enabled=1;
+  ('d-cloud',      'cloud-delivery',       '云原生与交付',   '容器、Kubernetes、CI/CD、发布和容量',       1),
+  ('d-middleware', 'middleware-platform',   '数据库与中间件', '数据库、SQL、缓存、消息队列、网关和存储',   1),
+  ('d-software',   'software',             '应用开发',       '业务功能、前端/后端 API、客户端与脚本',     1),
+  ('d-network',    'network-connectivity', '网络与安全',     '网络路由、VPN、防火墙、安全防护与专线',     1);
 
 -- 角色
 INSERT INTO roles (id, code, name, description, enabled) VALUES
-  ('r-dev',     'developer',            '开发工程师', '全栈应用、接口、客户端、脚本和系统实现',           1),
-  ('r-ops',     'operations-engineer',  '运维工程师', 'Linux、中间件、云平台、容器和可观测性',            1),
-  ('r-network', 'network-engineer',     '网络工程师', '路由、DNS、VPN、负载均衡、防火墙和专线',           1)
-ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), enabled=VALUES(enabled);
+  ('r-dev',     'developer',           '开发工程师', '全栈应用、接口、客户端、脚本和系统实现',  1),
+  ('r-ops',     'operations-engineer', '运维工程师', 'Linux、中间件、云平台、容器和可观测性',   1),
+  ('r-network', 'network-engineer',    '网络工程师', '路由、DNS、VPN、负载均衡、防火墙和专线', 1);
 
 -- 角色与领域映射
-INSERT IGNORE INTO role_task_domains (id, role_id, domain_id, relation_type) VALUES
-  ('r-dev:d-software',      'r-dev',     'd-software',   'P'),
-  ('r-ops:d-cloud',         'r-ops',     'd-cloud',      'P'),
-  ('r-ops:d-middleware',    'r-ops',     'd-middleware',  'P'),
-  ('r-network:d-network',   'r-network', 'd-network',    'P');
+INSERT INTO role_task_domains (id, role_id, domain_id, relation_type) VALUES
+  ('r-dev:d-software',    'r-dev',     'd-software',   'P'),
+  ('r-ops:d-cloud',       'r-ops',     'd-cloud',      'P'),
+  ('r-ops:d-middleware',  'r-ops',     'd-middleware',  'P'),
+  ('r-network:d-network', 'r-network', 'd-network',    'P');
 
 -- ============================================================
 -- 初始化完成
