@@ -21,6 +21,7 @@ import { UserRole } from './entities/user-role.entity';
 import { MissionDomain } from './entities/mission-domain.entity';
 import { MissionNotificationRecipient } from './entities/mission-notification-recipient.entity';
 import { PiiService } from './pii.service';
+import { PointLedger } from './entities/point-ledger.entity';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
@@ -45,6 +46,7 @@ export class EpointsService {
     @InjectRepository(UserRole) private readonly userRoleRepo: Repository<UserRole>,
     @InjectRepository(MissionDomain) private readonly missionDomainRepo: Repository<MissionDomain>,
     @InjectRepository(MissionNotificationRecipient) private readonly missionRecipientRepo: Repository<MissionNotificationRecipient>,
+    @InjectRepository(PointLedger) private readonly pointLedgerRepo: Repository<PointLedger>,
     private readonly storageService: StorageService,
     private readonly piiService: PiiService,
     private readonly dataSource: DataSource,
@@ -182,6 +184,17 @@ export class EpointsService {
       earner.points_balance += awardPoints;
       earner.points_earned_lifetime += awardPoints;
       await this.userRepo.save(earner);
+      await this.pointLedgerRepo.save(this.pointLedgerRepo.create({
+        id: `pl-${randomUUID()}`,
+        userId: earner.id,
+        sourceType: 'mission_base',
+        sourceId: mission.id,
+        targetType: 'user',
+        targetId: earner.id,
+        pointsDelta: awardPoints,
+        reason: `内部任务“${mission.title}”基础奖励`,
+        operatorId: requesterId,
+      }));
 
       mission.status = 'Completed';
       await this.missionRepo.save(mission);
@@ -256,8 +269,8 @@ export class EpointsService {
       if (duplicate) throw new BadRequestException('该手机号已绑定其他成员');
     }
     const roleAssignments = await this.validateRoleAssignments(data.roles);
-    const primaryRole = await this.roleRepo.findOne({ where: { id: roleAssignments.find((item) => item.isPrimary)!.roleId } });
-    if (!primaryRole) throw new BadRequestException('主角色不存在');
+    const primaryRole = await this.roleRepo.findOne({ where: { id: roleAssignments[0].roleId } });
+    if (!primaryRole) throw new BadRequestException('角色不存在');
     const userId = `u-${randomUUID()}`;
     const user = this.userRepo.create({
       id: userId, name, avatar: '/avatars/dev.png', role: primaryRole.name, roleType: 'Member',
@@ -270,7 +283,7 @@ export class EpointsService {
       await manager.save(Credential, { userId, username, passwordHash: await bcrypt.hash(password, 12) });
       await manager.save(UserRole, roleAssignments.map((item) => ({ id: `${userId}:${item.roleId}`, userId, ...item })));
     });
-    await this.pushFeed('system', `【人员新增】管理员添加了成员 ${name}，主角色为 ${primaryRole.name}。`);
+    await this.pushFeed('system', `【人员新增】管理员添加了成员 ${name}，角色为 ${primaryRole.name}。`);
     return this.getPersonnel(requesterId);
   }
 
@@ -367,16 +380,13 @@ export class EpointsService {
     if (!name || name.length > 32) throw new BadRequestException('姓名不能为空且不能超过 32 个字符');
     const phone = this.piiService.normalizePhone(data.phone || '');
     const roleAssignments = await this.validateRoleAssignments(data.roles);
-    const roleIds = roleAssignments.map((item) => item.roleId);
-    const validRoles = await this.roleRepo.find({ where: { id: In(roleIds), enabled: true } });
     const phoneHash = this.piiService.hash(phone);
     if (phoneHash) {
       const duplicate = await this.userRepo.createQueryBuilder('user').addSelect('user.phoneHash').where('user.phoneHash = :phoneHash AND user.id != :userId', { phoneHash, userId }).getOne();
       if (duplicate) throw new BadRequestException('该手机号已绑定其他成员');
     }
-    const primary = roleAssignments.find((item) => item.isPrimary);
-    if (!primary) throw new BadRequestException('必须设置一个主角色');
-    const primaryRole = validRoles.find((role) => role.id === primary.roleId)!;
+    const primaryRole = await this.roleRepo.findOne({ where: { id: roleAssignments[0].roleId, enabled: true } });
+    if (!primaryRole) throw new BadRequestException('角色不存在');
     user.name = name;
     user.phoneEncrypted = this.piiService.encrypt(phone);
     user.phoneHash = phoneHash;
@@ -399,12 +409,14 @@ export class EpointsService {
 
   private async validateRoleAssignments(value: any) {
     const assignments = Array.isArray(value) ? value : [];
-    if (!assignments.length || assignments.filter((item) => item.isPrimary).length !== 1) throw new BadRequestException('请至少选择一个角色，并设置一个主角色');
-    const roleIds = [...new Set(assignments.map((item) => String(item.roleId)))];
-    if (roleIds.length !== assignments.length) throw new BadRequestException('角色不能重复');
-    const validRoles = await this.roleRepo.find({ where: { id: In(roleIds), enabled: true } });
-    if (validRoles.length !== roleIds.length) throw new BadRequestException('包含无效角色');
-    return assignments.map((item) => ({ roleId: String(item.roleId), isPrimary: Boolean(item.isPrimary), level: Math.min(4, Math.max(1, Number(item.level) || 2)) }));
+    if (assignments.length === 0) throw new BadRequestException('请至少选择一个角色');
+    const results: { roleId: string; isPrimary: boolean; level: number }[] = [];
+    for (let i = 0; i < assignments.length; i++) {
+      const roleId = String(assignments[i].roleId || '');
+      if (!await this.roleRepo.findOne({ where: { id: roleId, enabled: true } })) throw new BadRequestException('角色不存在或已停用');
+      results.push({ roleId, isPrimary: i === 0, level: assignments[i].level ?? 1 });
+    }
+    return results;
   }
 
   async previewMissionRecipients(requesterId: string, data: any) {
@@ -775,15 +787,8 @@ export class EpointsService {
 
   private parseMissionDomainIds(data: any) {
     const primary = String(data.primaryDomainId || '').trim();
-    let secondary: string[] = [];
-    try {
-      secondary = Array.isArray(data.secondaryDomainIds) ? data.secondaryDomainIds : JSON.parse(data.secondaryDomainIds || '[]');
-    } catch {
-      throw new BadRequestException('次要任务领域格式不正确');
-    }
-    const ids = [...new Set([primary, ...secondary.map(String)].filter(Boolean))];
-    if (!primary) throw new BadRequestException('请选择主任务领域');
-    return ids;
+    if (!primary) throw new BadRequestException('请选择任务领域');
+    return [primary];
   }
 
   private async matchMissionRecipients(domainIds: string[]) {
@@ -802,17 +807,14 @@ export class EpointsService {
     const roles = await this.roleRepo.find({ where: { id: In(roleIds) } });
     return users.map((user) => {
       const matchedAssignments = assignments.filter((item) => item.userId === user.id);
-      const matchedMappings = mappings.filter((mapping) => matchedAssignments.some((assignment) => assignment.roleId === mapping.roleId));
-      const types = matchedMappings.map((item) => item.relationType);
-      const matchType = types.includes('P') ? 'P' : types.includes('R') ? 'R' : 'S';
       const phone = this.piiService.decrypt(user.phoneEncrypted);
       return {
         userId: user.id,
         name: user.name,
         phone,
         roleNames: [...new Set(matchedAssignments.map((item) => roles.find((role) => role.id === item.roleId)?.name).filter(Boolean))] as string[],
-        matchType,
-        mentioned: matchType === 'P' && Boolean(phone),
+        matchType: 'P',
+        mentioned: Boolean(phone),
       };
     });
   }
@@ -938,7 +940,7 @@ export class EpointsService {
     const pointsCost = Number(data.points_cost);
     const inventory = Number(data.inventory);
     const levelRequired = Number(data.level_required);
-    const categories = ['Hardware', 'Software', 'Training', 'Lifestyle'];
+    const categories = ['Hardware', 'Software', 'Training', 'Lifestyle', 'Reimbursement', 'CashOut'];
     if (!title) throw new BadRequestException('请输入商品名称');
     if (!description) throw new BadRequestException('请输入商品描述');
     if (!categories.includes(category)) throw new BadRequestException('请选择有效的商品分类');
@@ -998,11 +1000,10 @@ export class EpointsService {
     );
     await seedService.onApplicationBootstrap();
     await this.userRoleRepo.save([
-      { id: 'u-2:r-ops', userId: 'u-2', roleId: 'r-ops', isPrimary: true, level: 4 },
-      { id: 'u-2:r-data', userId: 'u-2', roleId: 'r-data', isPrimary: false, level: 3 },
+      { id: 'u-2:r-ops', userId: 'u-2', roleId: 'r-ops', isPrimary: true, level: 1 },
     ]);
     const seededMissions = await this.missionRepo.find();
-    const categoryDomain: Record<string, string> = { Development: 'd-software', Design: 'd-experience', QA: 'd-quality', Operations: 'd-observability' };
+    const categoryDomain: Record<string, string> = { Development: 'd-software', Design: 'd-software', QA: 'd-software', Operations: 'd-cloud' };
     await this.missionDomainRepo.save(seededMissions.map((mission) => ({
       id: `${mission.id}:${categoryDomain[mission.category] || 'd-software'}`,
       missionId: mission.id,

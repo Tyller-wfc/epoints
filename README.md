@@ -8,7 +8,7 @@ ePoints 是面向企业内部团队的任务协作、即时积分激励和技术
 - 任务发布、专业领域匹配、企业微信通知、任务认领、成果提交与审核。
 - 企业微信消息中的手机认领链接，仅展示当前任务详情和认领按钮。
 - 任务与故障附件上传、图片预览和文件下载，文件存储在 MinIO。
-- 角色、任务领域、主辅关系和人员可用状态管理。
+- 开发、运维、网络三个固定角色，配合单一任务领域和人员可用状态管理。
 - Critical 故障告警、On-Call 自动分派、MTTA/MTTR 统计和积分结算。
 - 福利商品维护、积分兑换、库存扣减和发放记录。
 - 企业微信机器人配置、接收人预览、手机号提醒和测试消息。
@@ -92,7 +92,57 @@ Copy-Item .env.example .env
 
 `.env` 已加入 `.gitignore`，不要提交实际凭据。
 
-### 3. 初始化数据库
+### 3. 本机启动 MySQL 和 MinIO
+
+项目提供了 Windows PowerShell 启动脚本。请在项目根目录 `D:\epoints` 打开 PowerShell，先允许当前窗口执行脚本：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+```
+
+启动 MySQL（使用项目内的 `mysql-data` 数据目录，监听 `3306`）：
+
+```powershell
+.\start-mysql.ps1
+```
+
+启动 MinIO（API 端口 `9000`，管理控制台端口 `9001`）：
+
+```powershell
+.\start-minio.ps1
+```
+
+两个脚本会持续占用当前终端。如果需要继续执行其他命令，请分别在两个 PowerShell 窗口中启动，或使用新的窗口运行脚本：
+
+```powershell
+Start-Process powershell.exe -ArgumentList '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', '.\start-mysql.ps1'
+Start-Process powershell.exe -ArgumentList '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', '.\start-minio.ps1'
+```
+
+验证服务是否正常：
+
+```powershell
+$env:Path += ';C:\Program Files\MySQL\MySQL Server 8.4\bin'
+mysqladmin -h 127.0.0.1 -P 3306 -u root -p ping
+Test-NetConnection 127.0.0.1 -Port 9000
+```
+
+MySQL 客户端连接命令（密码使用 `server/.env` 中的 `DB_PASSWORD`）：
+
+```powershell
+mysql -h 127.0.0.1 -P 3306 -u root -p
+```
+
+MinIO 控制台地址：[http://127.0.0.1:9001](http://127.0.0.1:9001)，默认账号为 `admin`，密码为 `Admin@123456`（与 `start-minio.ps1` 一致）。
+
+停止本机服务：
+
+```powershell
+Stop-Process -Name mysqld -ErrorAction SilentlyContinue
+Stop-Process -Name minio -ErrorAction SilentlyContinue
+```
+
+### 4. 初始化数据库
 
 创建数据库并执行基础 SQL：
 
@@ -108,11 +158,14 @@ npm run migrate:attachments
 npm run migrate:roles
 npm run migrate:avatars
 npm run migrate:user-refs
+npm run migrate:simplified-roles
+npm run migrate:service
+npm run migrate:service-mission-settlement
 ```
 
 `migrate:single-owner` 会清理其他成员，仅用于将旧演示数据收敛为单一管理员，不应在正常团队环境执行。
 
-### 4. 启动服务
+### 5. 启动服务
 
 后端：
 
@@ -180,7 +233,8 @@ npm test -- --runInBand
 - [数据库初始化](doc/db_setup.sql)
 - [角色与任务领域](doc/role_domain_system.md)
 - [企业微信通知](doc/wecom_notification.md)
-- [积分与业务规则](doc/rules_guide.md)
+- [积分与业务规则](doc/ePoints积分规则全景手册.md)
+- [客户服务与员工保障制度](doc/service_policy.md)
 
 ## 注意事项
 

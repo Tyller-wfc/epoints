@@ -25,10 +25,10 @@ export default function Dashboard({ state, onResetData }) {
 
   // 根据累计积分判断荣誉段位等级 (L1 - L5 体系)
   const getRankName = (lifetimePoints) => {
-    if (lifetimePoints >= 20000) return "L5 终身荣誉殿堂 (Honorary)";
-    if (lifetimePoints >= 10000) return "L4 效能大师 / 战略指挥官 (Master)";
-    if (lifetimePoints >= 5000) return "L3 核心专家 / 业务操盘手 (Expert)";
-    if (lifetimePoints >= 2000) return "L2 开发骨干 / 交付先锋 (Pro)";
+    if (lifetimePoints >= 6000) return "L5 终身荣誉殿堂 (Honorary)";
+    if (lifetimePoints >= 3000) return "L4 效能大师 / 战略指挥官 (Master)";
+    if (lifetimePoints >= 1000) return "L3 核心专家 / 业务操盘手 (Expert)";
+    if (lifetimePoints >= 200) return "L2 开发骨干 / 交付先锋 (Pro)";
     return "L1 研发新星 / 业务助理 (Rookie)";
   };
 
@@ -99,16 +99,8 @@ export default function Dashboard({ state, onResetData }) {
 
         {/* 角色速切面板 */}
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ marginBottom: '16px' }}>
             <span className="badge orange">团队成员</span>
-            {onResetData && (
-              <button
-                onClick={onResetData}
-                style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}
-              >
-                [ 重置模拟数据库 ]
-              </button>
-            )}
           </div>
           
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', lineHeight: '1.4' }}>
@@ -319,6 +311,19 @@ export default function Dashboard({ state, onResetData }) {
             >
               ⚠️ 问责与处罚条例
             </button>
+            <button
+              onClick={() => setActiveHandbookTab('service')}
+              className="cyber-btn"
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                background: activeHandbookTab === 'service' ? 'var(--accent-cyan)' : 'rgba(0, 0, 0, 0.2)',
+                borderColor: activeHandbookTab === 'service' ? 'var(--accent-cyan)' : 'var(--border-muted)',
+                color: activeHandbookTab === 'service' ? 'black' : 'var(--text-primary)'
+              }}
+            >
+              🤝 客户服务规范与评价
+            </button>
           </div>
         </div>
 
@@ -326,126 +331,68 @@ export default function Dashboard({ state, onResetData }) {
         {activeHandbookTab === 'points' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
             
-            {/* 产品与业务分析战线 */}
+            {/* 1. 产品规划与需求分析 */}
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Briefcase size={14} /> 产品规划与业务分析 (PM/BA)
+                <Briefcase size={14} /> 产品规划与需求分析 (PM/BA)
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 核心业务产品规划设计书 (PRD/MRD): <span style={{ color: 'var(--text-bright)' }}>800 - 1500 eP</span></li>
-                <li>• 竞品深度分析与商业决策参考报告: <span style={{ color: 'var(--text-bright)' }}>500 - 800 eP</span></li>
-                <li>• 业务需求收集与原型线框稿规划: <span style={{ color: 'var(--text-bright)' }}>200 - 400 eP</span></li>
+                <li>• 核心产品功能 / 大版本需求规划 (PRD): <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>400 - 1000 eP</span></li>
+                <li>• 日常业务需求分析与原型线框图设计: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>100 - 400 eP</span></li>
+                <li>• 客户使用反馈收集与需求变更梳理: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>10 - 100 eP</span></li>
                 <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 以产品上线并顺利进行第一次迭代验证为积分划拨节点。
+                  ※ 需求评审通过并进入研发迭代后划拨积分。
                 </li>
               </ul>
             </div>
 
-            {/* 技术与研发战线 */}
+            {/* 2. 核心技术与研发交付 */}
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Code size={14} /> 核心技术与研发战线 (R&D)
+                <Code size={14} /> 核心技术与研发交付 (R&D)
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 基础架构重构 / 核心数据库深度调优: <span style={{ color: 'var(--text-bright)' }}>1200 - 2000 eP</span></li>
-                <li>• 核心业务模块开发 / 公共 API 交付: <span style={{ color: 'var(--text-bright)' }}>600 - 1100 eP</span></li>
-                <li>• 日常业务 Bug 修复 / 代码单元测试扩充: <span style={{ color: 'var(--text-bright)' }}>150 - 400 eP</span></li>
+                <li>• 重大技术架构重构 / 核心数据库结构设计: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>400 - 1000 eP</span></li>
+                <li>• 新功能模块独立开发 / 核心 API 接口交付: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>150 - 400 eP</span></li>
+                <li>• 日常业务页面开发 / 功能优化与小迭代: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>50 - 150 eP</span></li>
+                <li>• 日常小 Bug 修复 / 线上紧急问题打补丁: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>10 - 50 eP (10 eP起)</span></li>
                 <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 所有研发积分需代码成功合并（PR merged）且通过集成测试后到账。
+                  ※ 代码完成测试验证与主干合并后自动结算发放。
                 </li>
               </ul>
             </div>
 
-            {/* 体验与视觉设计战线 */}
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <PenTool size={14} /> 体验设计与交互规范 (UX/UI)
-              </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 全站设计规范 (Design System) 订立与同步: <span style={{ color: 'var(--text-bright)' }}>1500 - 2500 eP</span></li>
-                <li>• 独立模块高保真视觉与动态动效方案设计: <span style={{ color: 'var(--text-bright)' }}>500 - 1000 eP</span></li>
-                <li>• 细节切图导出、前端还原走查与缺陷修复: <span style={{ color: 'var(--text-bright)' }}>200 - 500 eP</span></li>
-                <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 积分依据交付质量与研发走查通过率实施阶梯扣减或奖励。
-                </li>
-              </ul>
-            </div>
-
-            {/* 质量保障与安全战线 */}
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckSquare size={14} /> 质量保障与代码安全 (QA/SEC)
-              </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 企业级接口/全链路自动化测试框架搭建: <span style={{ color: 'var(--text-bright)' }}>1000 - 1800 eP</span></li>
-                <li>• 系统红蓝对抗演练 / 渗透性安全漏洞审计: <span style={{ color: 'var(--text-bright)' }}>800 - 1200 eP</span></li>
-                <li>• 单业务模块回归自动化脚本编写与用例库: <span style={{ color: 'var(--text-bright)' }}>350 - 700 eP</span></li>
-                <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 发现严重缺陷 (P0/P1) 或重大安全漏洞直接核发额外特别奖赏。
-                </li>
-              </ul>
-            </div>
-
-            {/* 系统运维与 SLA 响应战线 */}
+            {/* 3. 系统运维与 SLA 响应 */}
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h4 style={{ color: 'var(--accent-red)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Server size={14} /> 系统运维与 SLA 应急响应 (OPS)
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• K8s 多中心热备部署 / 生产数据库无感迁移: <span style={{ color: 'var(--text-bright)' }}>1500 - 3000 eP</span></li>
-                <li>• 生产重大故障紧急排障 (Critical): <span style={{ color: 'var(--text-bright)' }}>300 eP 基准分 + 时效加成</span>
+                <li>• 系统部署架构升级 / 数据库无感迁移与备份: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>400 - 1000 eP</span></li>
+                <li>• 生产故障紧急排障 (Critical): <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>100 - 300 eP + 时效加成</span>
                   <div style={{ paddingLeft: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    - 黄金10分钟内解决: <strong>1.8x 倍率加成</strong><br/>
-                    - 白银30分钟内解决: <strong>1.4x 倍率加成</strong><br/>
-                    - 超出2小时解决: <strong>0.7x 积分衰减</strong>
+                    - 黄金15分钟内解决: <strong>1.5x 倍率加成</strong><br/>
+                    - 白银30分钟内解决: <strong>1.2x 倍率加成</strong><br/>
+                    - 超出1小时解决: <strong>0.8x 积分衰减</strong>
                   </div>
                 </li>
+                <li>• 日常服务器巡检 / 自动化部署与日志监控: <span style={{ color: 'var(--text-bright)', fontWeight: 'bold' }}>10 - 50 eP</span></li>
               </ul>
             </div>
 
-            {/* 市场开拓与大客户销售 */}
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <HeartHandshake size={14} /> 市场开拓与客户成功 (BD/CS)
-              </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 重点 KA 大客户成功签约 / 关键合同续约: <span style={{ color: 'var(--text-bright)' }}>2000 - 5000 eP</span></li>
-                <li>• 商业新线索挖掘及转化为合格合作商商机: <span style={{ color: 'var(--text-bright)' }}>500 - 1200 eP</span></li>
-                <li>• 客户日常深度回访与服务满意度提升 (CSAT &gt; 95%): <span style={{ color: 'var(--text-bright)' }}>400 eP</span></li>
-                <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 商务人员可用积分购买商城商品发放给客户或团队作为答谢金。
-                </li>
-              </ul>
-            </div>
-
-            {/* 成长与组织建设战线 */}
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <GraduationCap size={14} /> 团队带教与组织建设 (HR/MGT)
-              </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• 担任新人导师并辅导其顺利通过试用期: <span style={{ color: 'var(--text-bright)' }}>1000 eP / 人</span></li>
-                <li>• 主讲技术/产品沙龙并完成文档 Wiki 沉淀: <span style={{ color: 'var(--text-bright)' }}>400 eP / 场</span></li>
-                <li>• 核心开发/安全开发/测试规范白皮书编写: <span style={{ color: 'var(--text-bright)' }}>500 - 800 eP / 份</span></li>
-                <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                  ※ 旨在鼓励资深人员输出方法论与赋能初级员工。
-                </li>
-              </ul>
-            </div>
-
-            {/* 动态战略调节机制 */}
+            {/* 4. 动态战略调节机制 */}
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent-orange)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h4 style={{ color: 'var(--accent-orange)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Flame size={14} /> 战略重心动态调节机制
+                <Flame size={14} /> 战略重心动态调节机制 (10 - 1000 eP 规则)
               </h4>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                企业管理层可随时调控在公开看板上发布的任务的积分倍率：
+                管理层在发布任务时，在 10 至 1000 eP 范围内灵活设定基础分，并动态调整倍率：
               </p>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '0' }}>
-                <li>• <strong>1.0x 标准</strong>：常态化交付与日常迭代任务。</li>
-                <li>• <strong>1.2x 引导</strong>：鼓励团队攻克的次要矛盾或死角。</li>
-                <li>• <strong>1.5x 加急</strong>：高优先交付任务或紧急排班。</li>
-                <li>• <strong>2.0x+ 决战</strong>：对公司核心战略起到关键成败决定作用的关键攻坚（如紧急抢修大客户、重要大版本踩线发布）。</li>
+                <li>• <strong>1.0x 标准</strong>：常态化日常需求开发与维护任务。</li>
+                <li>• <strong>1.2x 引导</strong>：鼓励优先解决技术债务或体验遗留问题。</li>
+                <li>• <strong>1.5x 加急</strong>：紧急高优先级需求或临时值班保障。</li>
+                <li>• <strong>2.0x 火速</strong>：对业务上线或大客户交付有重大决胜意义的关键攻坚。</li>
               </ul>
             </div>
 
@@ -473,27 +420,27 @@ export default function Dashboard({ state, onResetData }) {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '10px 6px', fontWeight: 'bold', color: 'var(--text-muted)' }}>L1 研发新星 / 业务助理</td>
-                    <td style={{ padding: '10px 6px' }}>0 - 1,999 eP</td>
+                    <td style={{ padding: '10px 6px' }}>0 - 199 eP</td>
                     <td style={{ padding: '10px 6px' }}>可兑换日常生活福利、技术下午茶、电子书会员等。</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '10px 6px', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>L2 开发骨干 / 交付先锋</td>
-                    <td style={{ padding: '10px 6px' }}>2,000 - 4,999 eP</td>
+                    <td style={{ padding: '10px 6px' }}>200 - 999 eP</td>
                     <td style={{ padding: '10px 6px' }}>额外解锁高品质数码外设、机械键盘、护眼显示器以及专业软件授权。</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '10px 6px', fontWeight: 'bold', color: 'var(--accent-green)' }}>L3 核心专家 / 业务操盘手</td>
-                    <td style={{ padding: '10px 6px' }}>5,000 - 9,999 eP</td>
+                    <td style={{ padding: '10px 6px' }}>1,000 - 2,999 eP</td>
                     <td style={{ padding: '10px 6px' }}>额外解锁带薪年假 (+1天/次)、高阶培训认证与行业证书考试报销。</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                     <td style={{ padding: '10px 6px', fontWeight: 'bold', color: 'var(--accent-orange)' }}>L4 效能大师 / 战略指挥官</td>
-                    <td style={{ padding: '10px 6px' }}>10,000 - 19,999 eP</td>
+                    <td style={{ padding: '10px 6px' }}>3,000 - 5,999 eP</td>
                     <td style={{ padding: '10px 6px' }}>解锁企业级稀缺办公装备（顶配MacBook/护眼显示器）、外部大咖一对一指导机会。</td>
                   </tr>
                   <tr>
                     <td style={{ padding: '10px 6px', fontWeight: 'bold', color: 'var(--accent-red)', textShadow: '0 0 10px rgba(255,0,0,0.2)' }}>L5 终身荣誉殿堂</td>
-                    <td style={{ padding: '10px 6px', color: 'var(--accent-red)', fontWeight: 'bold' }}>20,000+ eP</td>
+                    <td style={{ padding: '10px 6px', color: 'var(--accent-red)', fontWeight: 'bold' }}>6,000+ eP</td>
                     <td style={{ padding: '10px 6px' }}>享受终身荣誉效能津贴，由公司全额资助年度海外游或定制化专属福利。</td>
                   </tr>
                 </tbody>
@@ -513,7 +460,7 @@ export default function Dashboard({ state, onResetData }) {
                 <div style={{ padding: '10px', background: 'rgba(0,0,0,0.3)', borderLeft: '3px solid var(--accent-red)', borderRadius: '2px' }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>⚡ SLA 极速排除官</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    在“黄金10分钟”内排除线上故障累计达 10 次。
+                    在“黄金15分钟”内排除线上故障累计达 10 次。
                   </div>
                 </div>
 
@@ -521,13 +468,6 @@ export default function Dashboard({ state, onResetData }) {
                   <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>🔥 红区战略主攻手</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                     累计完成并交付 2.0x 倍率以上核心战略任务 5 次。
-                  </div>
-                </div>
-
-                <div style={{ padding: '10px', background: 'rgba(0,0,0,0.3)', borderLeft: '3px solid var(--accent-green)', borderRadius: '2px' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>🌱 卓越传道带教导师</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    作为新人导师，成功带教 3 名新员工通过试用期。
                   </div>
                 </div>
 
@@ -556,8 +496,8 @@ export default function Dashboard({ state, onResetData }) {
                 当生产环境或核心系统发生故障时，值班或派单人员需在时效内解决：
               </p>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
-                <li>• <strong>P0/P1级故障 (Critical)</strong>: 超过 120 分钟未恢复。</li>
-                <li>• <strong>处罚措施</strong>: 扣除责任人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>100 - 200 eP</span> 效能积分。</li>
+                <li>• <strong>P0/P1级故障 (Critical)</strong>: 超过 60 分钟未恢复。</li>
+                <li>• <strong>处罚措施</strong>: 扣除责任人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>-25 eP</span> 效能积分。</li>
                 <li>• <strong>系统功能</strong>: 管理员可在保障队列中对逾期工单执行扣分。</li>
               </ul>
             </div>
@@ -572,7 +512,7 @@ export default function Dashboard({ state, onResetData }) {
               </p>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
                 <li>• <strong>违规判定</strong>: 红色警报触发后，值班人员超过 15 分钟未确认接单，或拒绝履行排障职责。</li>
-                <li>• <strong>处罚措施</strong>: 扣除值班人员 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>100 eP</span> 积分，并在动态屏进行系统通报批评。</li>
+                <li>• <strong>处罚措施</strong>: 扣除值班人员 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>-20 eP</span> 积分，并在动态屏进行系统通报批评。</li>
               </ul>
             </div>
 
@@ -586,7 +526,7 @@ export default function Dashboard({ state, onResetData }) {
               </p>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
                 <li>• <strong>违规判定</strong>: 故障标记为 Resolved 后 2 小时内由于相同原因此次爆发，或修复方案直接引发了其他次生严重问题。</li>
-                <li>• <strong>处罚措施</strong>: 扣除原修复人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>150 eP</span> 积分，该工单作废并重新打开，重新指派排障。</li>
+                <li>• <strong>处罚措施</strong>: 扣除原修复人 <span style={{ color: 'var(--accent-red)', fontWeight: 'bold' }}>-30 eP</span> 积分，该工单作废并重新打开，重新指派排障。</li>
               </ul>
             </div>
 
@@ -600,7 +540,69 @@ export default function Dashboard({ state, onResetData }) {
               </p>
               <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
                 <li>• <strong>违规判定</strong>: 员工虚构工作成果（如随手填写的假链接、无效 commit）或提交物极其应付，被主管审核驳回且判定为虚报。</li>
-                <li>• <strong>处罚措施</strong>: 扣除当事人 <span style={{ color: 'var(--accent-orange)', fontWeight: 'bold' }}>50 eP</span> 积分，驳回修改，以正研发风气。</li>
+                <li>• <strong>处罚措施</strong>: 扣除当事人 <span style={{ color: 'var(--accent-orange)', fontWeight: 'bold' }}>-20 eP</span> 积分，驳回修改，以正研发风气。</li>
+              </ul>
+            </div>
+
+          </div>
+        )}
+
+        {/* Tab 4: 客户服务规范与评价细则 */}
+        {activeHandbookTab === 'service' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            
+            {/* 1. 服务响应与工时保障规范 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <HeartHandshake size={14} /> 8×5 标准与值班响应保障
+              </h4>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>标准工作工时</strong>: 8 小时 × 5 天 (工作日 9:00 - 18:00)，由主责任人承担日常协同与技术支持。</li>
+                <li>• <strong>非工作时间值班响应</strong>: 统一由当班值班员 (On-Call) 承接、分级、协调与交接。值班人员非工作时间服务享受专属加成积分。</li>
+                <li>• <strong>休假权益保护</strong>: 成员休假或非值班期间不强制响应非紧急服务，不扣分。</li>
+              </ul>
+            </div>
+
+            {/* 2. 团队角色与贡献分配机制 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-cyan)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <UserCheck size={14} /> 团队角色与贡献权重分配
+              </h4>
+              <ul style={{ listStyle: 'none', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '0' }}>
+                <li>• <strong>服务负责人 (Service Owner)</strong>: 全权负责客户沟通、服务交付结果与整体协调。</li>
+                <li>• <strong>主要提供者 / 协同人员</strong>: 负责专业技术排障或特定业务环节协作。</li>
+                <li>• <strong>贡献权重结算</strong>: 按团队选定的贡献比例 (默认均分 + 负责人加成) 自动划分基准积分。</li>
+              </ul>
+            </div>
+
+            {/* 3. 服务全生命周期 5 节点 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-muted)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-green)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckSquare size={14} /> 服务全生命周期五大流转节点
+              </h4>
+              <ol style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '16px' }}>
+                <li><strong>登记建立 (New)</strong>: 明确客户需求与服务承诺边界。</li>
+                <li><strong>响应受理 (Accepted)</strong>: 绑定服务人员，开始计时与沟通。</li>
+                <li><strong>服务交付 (Completed)</strong>: 提交对客户可理解的服务总结。</li>
+                <li><strong>客户反馈 (Pending Evaluation)</strong>: 收集客户原始凭证与满意度。</li>
+                <li><strong>归档评价 (Evaluated)</strong>: 主管评分并划拨积分至个人余额。</li>
+              </ol>
+            </div>
+
+            {/* 4. 管理员 6 维评分与满意度系数 */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent-orange)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h4 style={{ color: 'var(--accent-orange)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Award size={14} /> 6 维综合评分与满意度系数
+              </h4>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                服务完成后，主管从 6 大维度进行百分制综合评分：
+              </p>
+              <ul style={{ listStyle: 'none', fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '0' }}>
+                <li>• 客户结果 (35%) | 专业质量 (20%) | 主动沟通 (15%)</li>
+                <li>• 服务热情 (15%) | 公平透明 (10%) | 协作沉淀 (5%)</li>
+                <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px', marginTop: '4px' }}>
+                  ※ 客户反馈为“满意”或获书面表扬时，额外享有 1.2x - 1.5x 效能积分加成。
+                </li>
               </ul>
             </div>
 

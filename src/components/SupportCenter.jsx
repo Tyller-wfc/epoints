@@ -179,10 +179,10 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
                 onChange={(e) => setSeverity(e.target.value)}
                 style={{ fontSize: '0.85rem', color: severity === 'Critical' ? 'var(--accent-red)' : 'var(--text-bright)' }}
               >
-                <option value="Critical">Critical (红色警报)</option>
-                <option value="High">High (严重故障)</option>
-                <option value="Medium">Medium (一般故障)</option>
-                <option value="Low">Low (轻微问题)</option>
+                <option value="Critical">红色警报 (紧急)</option>
+                <option value="High">严重故障 (高级)</option>
+                <option value="Medium">一般故障 (中级)</option>
+                <option value="Low">轻微问题 (低级)</option>
               </select>
             </div>
 

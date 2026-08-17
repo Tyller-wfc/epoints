@@ -6,8 +6,11 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+epoints 地址信息.md
+minio.exe
 node_modules
+mysql-data
+minio-data
 dist
 dist-ssr
 *.local

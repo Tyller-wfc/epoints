@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, LockKeyhole, LogIn, ShieldCheck, UserRound } from 'lucide-react';
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState('u2');
-  const [password, setPassword] = useState('demo123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +45,6 @@ export default function Login({ onLogin }) {
           {error && <div className="login-error" role="alert">{error}</div>}
           <button className="cyber-btn login-submit" disabled={submitting} type="submit"><LogIn size={17} />{submitting ? '正在验证...' : '登录系统'}</button>
         </form>
-        <div className="login-demo"><strong>管理员账号</strong><span>u2</span><span>初始密码 demo123</span></div>
       </section>
     </main>
   );

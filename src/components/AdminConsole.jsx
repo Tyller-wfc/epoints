@@ -16,9 +16,8 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   // 新任务表单状态
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newBase, setNewBase] = useState(500);
+  const [newBase, setNewBase] = useState(50);
   const [newPrimaryDomain, setNewPrimaryDomain] = useState("");
-  const [newSecondaryDomains, setNewSecondaryDomains] = useState([]);
   const [newPriority, setNewPriority] = useState("Normal");
   const [recipientPreview, setRecipientPreview] = useState(null);
   const [newMult, setNewMult] = useState(1.0);
@@ -42,12 +41,11 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     setMissionError('');
     try {
       const primaryDomainId = newPrimaryDomain || taskDomains[0]?.id;
-      await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId, secondaryDomainIds: JSON.stringify(newSecondaryDomains) }, newFiles);
+      await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId }, newFiles);
       setNewTitle("");
       setNewDesc("");
       setNewBase(500);
       setNewPrimaryDomain("");
-      setNewSecondaryDomains([]);
       setNewPriority("Normal");
       setRecipientPreview(null);
       setNewMult(1.0);
@@ -356,8 +354,8 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                   type="number"
                   className="cyber-input"
                   required
-                  min={100}
-                  max={5000}
+                  min={10}
+                  max={1000}
                   value={newBase}
                   onChange={(e) => setNewBase(parseInt(e.target.value))}
                 />
@@ -379,11 +377,11 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>主任务领域
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>任务领域
               <select
                 className="cyber-select"
                 value={newPrimaryDomain || taskDomains[0]?.id || ''}
-                onChange={(e) => { setNewPrimaryDomain(e.target.value); setNewSecondaryDomains(items => items.filter(id => id !== e.target.value)); setRecipientPreview(null); }}
+                onChange={(e) => { setNewPrimaryDomain(e.target.value); setRecipientPreview(null); }}
                 style={{ marginTop: '6px' }}
               >
                 {taskDomains.map(domain => <option value={domain.id} key={domain.id}>{domain.name}</option>)}
@@ -396,19 +394,12 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
               </label>
             </div>
 
-            <div>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>次要任务领域（可多选）</label>
-              <div className="domain-selector">
-                {taskDomains.filter(domain => domain.id !== (newPrimaryDomain || taskDomains[0]?.id)).map(domain => <label key={domain.id} className={newSecondaryDomains.includes(domain.id) ? 'selected' : ''}><input type="checkbox" checked={newSecondaryDomains.includes(domain.id)} onChange={() => { setNewSecondaryDomains(items => items.includes(domain.id) ? items.filter(id => id !== domain.id) : [...items, domain.id]); setRecipientPreview(null); }} />{domain.name}</label>)}
-              </div>
-            </div>
-
             <div className="recipient-preview-box">
               <button type="button" disabled={!isAdmin} onClick={async () => {
-                try { setRecipientPreview(await onPreviewMissionRecipients({ primaryDomainId: newPrimaryDomain || taskDomains[0]?.id, secondaryDomainIds: newSecondaryDomains })); }
+                try { setRecipientPreview(await onPreviewMissionRecipients({ primaryDomainId: newPrimaryDomain || taskDomains[0]?.id })); }
                 catch (error) { setMissionError(error.message); }
-              }}>预览企业微信提醒人员</button>
-              {recipientPreview && <div><strong>将 @ {recipientPreview.mentionCount} 人</strong>{recipientPreview.recipients.length ? recipientPreview.recipients.map(item => <span key={item.userId}>{item.name} · {item.roleNames.join('/')}{item.mentioned ? ' · 将@' : ' · 协作'}</span>) : <span>当前领域未匹配到可用人员</span>}</div>}
+              }}>查看匹配成员</button>
+              {recipientPreview && <div><strong>匹配 {recipientPreview.recipients.length} 人，将 @ {recipientPreview.mentionCount} 人</strong>{recipientPreview.recipients.length ? recipientPreview.recipients.map(item => <span key={item.userId}>{item.name} · {item.roleNames[0]}</span>) : <span>当前领域未匹配到可用人员</span>}</div>}
             </div>
 
             <div style={{ marginTop: 'auto', paddingTop: '10px' }}>

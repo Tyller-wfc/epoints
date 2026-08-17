@@ -3,14 +3,8 @@ const getDatabaseConfig = require('./db-config.cjs');
 
 const roles = [
   ['r-dev', 'developer', '开发工程师', '全栈应用、接口、客户端、脚本和系统实现'],
-  ['r-ai', 'ai-engineer', '智能应用工程师', '大模型、Agent、RAG、知识库和模型评测'],
-  ['r-data', 'data-engineer', '数据工程师', '数据建模、数据库、ETL 和数据治理'],
   ['r-ops', 'operations-engineer', '运维工程师', 'Linux、中间件、云平台、容器和可观测性'],
   ['r-network', 'network-engineer', '网络工程师', '路由、DNS、VPN、负载均衡、防火墙和专线'],
-  ['r-security', 'security-engineer', '安全工程师', '身份权限、漏洞、攻防、审计和合规'],
-  ['r-quality', 'quality-engineer', '质量工程师', '自动化、性能、回归、质量门禁和验收'],
-  ['r-integration', 'integration-engineer', '集成工程师', 'SSO、LDAP、Webhook、第三方系统和流程自动化'],
-  ['r-experience', 'product-experience', '产品体验工程师', '需求、业务流程、交互体验、文档和用户采用'],
 ];
 
 const domains = [
@@ -28,17 +22,10 @@ const domains = [
 ];
 
 const mappings = [
-  ['r-dev','d-software','P'], ['r-quality','d-software','R'], ['r-experience','d-software','S'],
-  ['r-ai','d-ai','P'], ['r-dev','d-ai','S'], ['r-data','d-ai','S'], ['r-quality','d-ai','R'], ['r-security','d-ai','R'],
-  ['r-data','d-data','P'], ['r-dev','d-data','S'], ['r-ops','d-data','S'], ['r-security','d-data','R'],
-  ['r-ops','d-middleware','P'], ['r-dev','d-middleware','S'], ['r-data','d-middleware','S'],
-  ['r-ops','d-cloud','P'], ['r-dev','d-cloud','S'], ['r-security','d-cloud','R'], ['r-network','d-cloud','S'],
-  ['r-network','d-network','P'], ['r-ops','d-network','S'], ['r-security','d-network','R'],
-  ['r-security','d-security','P'], ['r-dev','d-security','S'], ['r-ops','d-security','S'], ['r-network','d-security','S'],
-  ['r-quality','d-quality','P'], ['r-dev','d-quality','S'], ['r-ai','d-quality','S'],
-  ['r-ops','d-observability','P'], ['r-network','d-observability','S'], ['r-dev','d-observability','S'], ['r-data','d-observability','S'], ['r-security','d-observability','R'],
-  ['r-integration','d-integration','P'], ['r-dev','d-integration','S'], ['r-ops','d-integration','S'], ['r-network','d-integration','S'],
-  ['r-experience','d-experience','P'], ['r-dev','d-experience','S'], ['r-ai','d-experience','S'],
+  ['r-dev','d-software','P'], ['r-dev','d-ai','P'], ['r-dev','d-data','P'],
+  ['r-dev','d-quality','P'], ['r-dev','d-integration','P'], ['r-dev','d-experience','P'],
+  ['r-ops','d-middleware','P'], ['r-ops','d-cloud','P'], ['r-ops','d-observability','P'],
+  ['r-network','d-network','P'], ['r-network','d-security','P'], ['r-network','d-cloud','P'],
 ];
 
 async function addColumn(connection, table, column, sql) {
@@ -60,10 +47,12 @@ async function migrate() {
   await db.query('CREATE TABLE IF NOT EXISTS mission_domains (id varchar(255) PRIMARY KEY, mission_id varchar(255) NOT NULL, domain_id varchar(255) NOT NULL, is_primary tinyint NOT NULL DEFAULT 0, UNIQUE KEY mission_domain_unique(mission_id,domain_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
   await db.query('CREATE TABLE IF NOT EXISTS mission_notification_recipients (id varchar(255) PRIMARY KEY, mission_id varchar(255) NOT NULL, user_id varchar(255) NOT NULL, match_type varchar(10) NOT NULL, role_names varchar(500) NOT NULL, mentioned tinyint NOT NULL DEFAULT 1, created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY recipient_mission(mission_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
   for (const role of roles) await db.query('INSERT INTO roles(id,code,name,description) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description)', role);
+  await db.query("UPDATE roles SET enabled = IF(id IN ('r-dev','r-ops','r-network'), 1, 0)");
   for (const domain of domains) await db.query('INSERT INTO task_domains(id,code,name,description) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description)', domain);
-  for (const [roleId, domainId, type] of mappings) await db.query('INSERT INTO role_task_domains(id,role_id,domain_id,relation_type) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE relation_type=VALUES(relation_type)', [`${roleId}:${domainId}`,roleId,domainId,type]);
+  await db.query('DELETE FROM role_task_domains');
+  for (const [roleId, domainId, type] of mappings) await db.query('INSERT INTO role_task_domains(id,role_id,domain_id,relation_type) VALUES(?,?,?,?)', [`${roleId}:${domainId}`,roleId,domainId,type]);
   const assignments = [
-    ['u-2','r-ops',1,4], ['u-2','r-data',0,3],
+    ['u-2','r-ops',1,1],
   ];
   for (const [userId,roleId,primary,level] of assignments) await db.query('INSERT IGNORE INTO user_roles(id,user_id,role_id,is_primary,level) VALUES(?,?,?,?,?)', [`${userId}:${roleId}`,userId,roleId,primary,level]);
   const [missions] = await db.query('SELECT id,category FROM missions');

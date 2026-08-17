@@ -196,6 +196,17 @@ export const testWecomWebhook = async (url, mentionMobiles) => {
   return postJson('/settings/wecom/test', { url, mentionMobiles });
 };
 
+export const getServiceCenter = async () => {
+  const res = await fetch(`${API_BASE}/service-center`, { headers: authHeaders() });
+  return parseResponse(res);
+};
+
+export const createExternalCustomer = async (data) => postJson('/service-center/customers', data);
+export const createServiceRecord = async (data) => postJson('/service-center/records', data);
+export const transitionServiceRecord = async (recordId, data) => postJson(`/service-center/records/${recordId}/transition`, data);
+export const addServiceFeedback = async (recordId, data) => postJson(`/service-center/records/${recordId}/feedback`, data);
+export const evaluateServiceParticipant = async (recordId, participantId, data) => postJson(`/service-center/records/${recordId}/participants/${participantId}/evaluate`, data);
+
 // 备用导出，防止第三方引用
 export const getTransactions = () => {
   return [];

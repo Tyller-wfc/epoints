@@ -1,0 +1,139 @@
+{
+  "total": 22,
+  "passed": 21,
+  "failed": 1,
+  "results": [
+    {
+      "module": "Auth",
+      "name": "Login with valid credentials",
+      "status": "PASS",
+      "details": "Token generated successfully"
+    },
+    {
+      "module": "Auth",
+      "name": "Block invalid password login",
+      "status": "PASS",
+      "details": "Blocked with HTTP 401"
+    },
+    {
+      "module": "Auth",
+      "name": "Get user profile (/auth/me)",
+      "status": "PASS",
+      "details": "Authenticated as 王方超"
+    },
+    {
+      "module": "State",
+      "name": "Fetch full system state (/state)",
+      "status": "PASS",
+      "details": "Found 1 users, 5 missions"
+    },
+    {
+      "module": "Personnel",
+      "name": "Fetch personnel list (/personnel)",
+      "status": "PASS",
+      "details": "Found 1 personnel records"
+    },
+    {
+      "module": "Missions",
+      "name": "Create new mission (/missions/create)",
+      "status": "PASS",
+      "details": "Mission created with ID m-1785313126528"
+    },
+    {
+      "module": "Missions",
+      "name": "Claim mission (/missions/claim)",
+      "status": "PASS",
+      "details": "Mission claimed successfully"
+    },
+    {
+      "module": "Missions",
+      "name": "Submit mission proof of work (/missions/submit)",
+      "status": "PASS",
+      "details": "Mission proof submitted"
+    },
+    {
+      "module": "Missions",
+      "name": "Update mission multiplier (/missions/multiplier)",
+      "status": "PASS",
+      "details": "Multiplier updated to 1.5x"
+    },
+    {
+      "module": "Missions",
+      "name": "Verify & reward points for mission (/missions/verify)",
+      "status": "PASS",
+      "details": "Mission verified & points awarded"
+    },
+    {
+      "module": "Rewards",
+      "name": "Add new reward item (/rewards)",
+      "status": "PASS",
+      "details": "Reward added ID r-0333f13dbde34786a32ea441498d63"
+    },
+    {
+      "module": "Rewards",
+      "name": "Purchase reward (/rewards/purchase)",
+      "status": "PASS",
+      "details": "Purchased successfully, tx ID tx-1785313126744"
+    },
+    {
+      "module": "Rewards",
+      "name": "Fetch transactions (/transactions)",
+      "status": "PASS",
+      "details": "Found 1 transactions"
+    },
+    {
+      "module": "Rewards",
+      "name": "Deliver reward (/rewards/deliver)",
+      "status": "PASS",
+      "details": "Transaction status marked as Delivered"
+    },
+    {
+      "module": "Tickets",
+      "name": "Raise emergency ticket (/tickets/raise)",
+      "status": "PASS",
+      "details": "Ticket raised ID t-1785313126817"
+    },
+    {
+      "module": "Tickets",
+      "name": "Acknowledge ticket (/tickets/acknowledge)",
+      "status": "PASS",
+      "details": "Ticket acknowledged"
+    },
+    {
+      "module": "Tickets",
+      "name": "Resolve ticket (/tickets/resolve)",
+      "status": "PASS",
+      "details": "Ticket resolved"
+    },
+    {
+      "module": "CustomerService",
+      "name": "Create external customer (/service-center/customers)",
+      "status": "PASS",
+      "details": "Customer created ID c-e1bef872-331f-4521-82c8-7eb68ee67f82"
+    },
+    {
+      "module": "CustomerService",
+      "name": "Create service record (/service-center/records)",
+      "status": "FAIL",
+      "details": "{\"statusCode\":500,\"message\":\"Internal server error\"}"
+    },
+    {
+      "module": "MinIO Storage",
+      "name": "Upload user avatar to MinIO",
+      "status": "PASS",
+      "details": "Uploaded avatar URL: /api/personnel/u-2/avatar?v=0c8b020c-a7f2-44aa-b818-339549c25730.png"
+    },
+    {
+      "module": "MinIO Storage",
+      "name": "Retrieve user avatar from MinIO",
+      "status": "PASS",
+      "details": "Retrieved 67 bytes from MinIO"
+    },
+    {
+      "module": "Settings",
+      "name": "Save WeCom webhook settings (/settings/wecom)",
+      "status": "PASS",
+      "details": "Saved successfully"
+    }
+  ]
+}

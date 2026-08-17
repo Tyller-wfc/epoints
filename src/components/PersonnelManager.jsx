@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Check, Phone, Plus, RotateCcw, Save, Trash2, UserRoundCog, Users } from 'lucide-react';
 
 const availabilityLabels = { Available: '可用', Busy: '忙碌', Leave: '休假' };
-const toForm = (person) => ({ name: person.name, avatar: person.avatar, username: person.username || '', password: '', phone: person.phone || '', enabled: person.enabled, availability: person.availability, roles: person.roles.map((item) => ({ roleId: item.roleId, isPrimary: item.isPrimary, level: item.level })) });
+const toForm = (person) => {
+  const sorted = [...person.roles].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  return { name: person.name, avatar: person.avatar, username: person.username || '', password: '', phone: person.phone || '', enabled: person.enabled, availability: person.availability, roles: sorted.map((r) => ({ roleId: r.roleId, isPrimary: r.isPrimary, level: r.level ?? 1 })) };
+};
 
 export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePersonnel, onCreatePersonnel, onDeletePersonnel, onUpdatePersonnelAvatar, onResetPersonnelAvatar }) {
   const [personnel, setPersonnel] = useState([]);
@@ -31,7 +34,7 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
     setStatus(null);
     setAvatarFile(null);
     setAvatarPreview('');
-    setForm({ name: '', avatar: '/avatars/dev.png', username: '', password: '', phone: '', enabled: true, availability: 'Available', roles: roles[0] ? [{ roleId: roles[0].id, isPrimary: true, level: 2 }] : [] });
+    setForm({ name: '', avatar: '/avatars/dev.png', username: '', password: '', phone: '', enabled: true, availability: 'Available', roles: roles[0] ? [{ roleId: roles[0].id, isPrimary: true, level: 1 }] : [] });
   };
 
   const chooseAvatar = (file) => {
@@ -42,20 +45,6 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
   };
-
-  const toggleRole = (roleId) => {
-    setForm((current) => {
-      const exists = current.roles.find((item) => item.roleId === roleId);
-      if (exists) {
-        const remaining = current.roles.filter((item) => item.roleId !== roleId);
-        if (exists.isPrimary && remaining.length) remaining[0] = { ...remaining[0], isPrimary: true };
-        return { ...current, roles: remaining };
-      }
-      return { ...current, roles: [...current.roles, { roleId, level: 2, isPrimary: current.roles.length === 0 }] };
-    });
-  };
-
-  const updateRole = (roleId, patch) => setForm((current) => ({ ...current, roles: current.roles.map((item) => ({ ...item, isPrimary: patch.isPrimary ? false : item.isPrimary, ...(item.roleId === roleId ? patch : {}) })) }));
 
   const save = async () => {
     setSaving(true); setStatus(null);
@@ -80,7 +69,7 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
     <div className="personnel-layout">
       <div className="personnel-list">
         {personnel.map((person) => <button type="button" key={person.id} className={selectedId === person.id ? 'active' : ''} onClick={() => select(person)}>
-          <img src={person.avatar} alt="" /><span><strong>{person.name}</strong><small>{person.roles.find((item) => item.isPrimary)?.role?.name || '未设置角色'}</small></span>{selectedId === person.id && <Check size={15} />}
+          <img src={person.avatar} alt="" /><span><strong>{person.name}</strong><small>{person.roles.filter((r) => r.role).map((r) => r.role.name).join(' · ') || '未设置角色'}</small></span>{selectedId === person.id && <Check size={15} />}
         </button>)}
         {creating && <button type="button" className="active"><span><strong>新成员</strong><small>填写账号及角色信息</small></span><Check size={15} /></button>}
       </div>
@@ -97,13 +86,27 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
           <label>企业微信手机号<div className="input-with-icon"><Phone size={15} /><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="13800138000" /></div></label>
           <label>状态<select className="cyber-select" value={form.availability} onChange={(event) => setForm({ ...form, availability: event.target.value })}>{Object.entries(availabilityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         </div>
-        <div className="role-editor-title"><UserRoundCog size={16} />技术角色与能力等级</div>
+        <div className="role-editor-title"><UserRoundCog size={16} />技术角色</div>
         <div className="role-editor-grid">
           {roles.map((role) => {
-            const assignment = form.roles.find((item) => item.roleId === role.id);
-            return <div className={`role-editor-item ${assignment ? 'selected' : ''}`} key={role.id}>
-              <label><input type="checkbox" checked={Boolean(assignment)} onChange={() => toggleRole(role.id)} /><span><strong>{role.name}</strong><small>{role.description}</small></span></label>
-              {assignment && <div><button type="button" className={assignment.isPrimary ? 'primary' : ''} onClick={() => updateRole(role.id, { isPrimary: true })}>{assignment.isPrimary ? '主角色' : '设为主角色'}</button><select value={assignment.level} onChange={(event) => updateRole(role.id, { level: Number(event.target.value) })}>{[1,2,3,4].map(level => <option value={level} key={level}>L{level}</option>)}</select></div>}
+            const isChecked = form.roles.some((r) => r.roleId === role.id);
+            const isPrimary = form.roles[0]?.roleId === role.id;
+            const toggleRole = (checked) => {
+              if (checked) {
+                // 新增：追加到末尾，isPrimary 由位置决定（第一个为主角色）
+                const next = [...form.roles, { roleId: role.id, isPrimary: false, level: 1 }];
+                setForm({ ...form, roles: next.map((r, i) => ({ ...r, isPrimary: i === 0 })) });
+              } else {
+                if (form.roles.length === 1) return; // 至少保留一个
+                const next = form.roles.filter((r) => r.roleId !== role.id);
+                setForm({ ...form, roles: next.map((r, i) => ({ ...r, isPrimary: i === 0 })) });
+              }
+            };
+            return <div className={`role-editor-item ${isChecked ? 'selected' : ''}`} key={role.id}>
+              <label>
+                <input type="checkbox" checked={isChecked} onChange={(e) => toggleRole(e.target.checked)} />
+                <span><strong>{role.name}{isPrimary && isChecked && form.roles.length > 1 ? <em style={{ fontSize: '0.7rem', marginLeft: '6px', opacity: 0.6, fontStyle: 'normal' }}>主角色</em> : null}</strong><small>{role.description}</small></span>
+              </label>
             </div>;
           })}
         </div>

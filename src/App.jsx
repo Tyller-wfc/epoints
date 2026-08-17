@@ -40,8 +40,9 @@ import AdminConsole from './components/AdminConsole';
 import Login from './components/Login';
 import HeaderAvatarMenu from './components/HeaderAvatarMenu';
 import QuickClaimMission from './components/QuickClaimMission';
+import CustomerServiceCenter from './components/CustomerServiceCenter';
 
-import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut } from 'lucide-react';
+import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut, HeartHandshake } from 'lucide-react';
 
 function App() {
   const [state, setState] = useState(null);
@@ -340,6 +341,20 @@ function App() {
             <ShieldAlert size={14} /> 技术保障中心
           </button>
 
+          <button
+            className={`cyber-btn ${activeTab === 'service' ? 'active' : ''}`}
+            onClick={() => setActiveTab('service')}
+            style={{
+              background: activeTab === 'service' ? 'var(--accent-cyan)' : 'transparent',
+              borderColor: activeTab === 'service' ? 'var(--accent-cyan)' : 'transparent',
+              color: activeTab === 'service' ? 'black' : 'var(--text-primary)',
+              padding: '8px 16px',
+              fontSize: '0.8rem'
+            }}
+          >
+            <HeartHandshake size={14} /> 客户服务
+          </button>
+
           {isAdmin && (
             <button
               className={`cyber-btn ${activeTab === 'admin' ? 'active' : ''}`}
@@ -402,6 +417,9 @@ function App() {
             onFlagSecondaryIncident={handleFlagSecondaryIncident}
             onAcknowledgeTicket={handleAcknowledgeTicket}
           />
+        )}
+        {activeTab === 'service' && (
+          <CustomerServiceCenter />
         )}
         {activeTab === 'admin' && isAdmin && (
           <AdminConsole 

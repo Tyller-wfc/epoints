@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShoppingBag, Coins, Package, ClipboardList, Plus, Pencil, Trash2, Save, X, ImagePlus } from 'lucide-react';
 
-const rewardIcons = ['🎁', '☕', '🥤', '🍿', '🍕', '🍰', '🎧', '⌨️', '🖱️', '💻', '🖥️', '📱', '🎨', '📚', '📜', '🏖️', '✈️', '💺'];
+const rewardIcons = ['🎁', '🚕', '🏨', '🍱', '💵', '💰', '☕', '🚗', '💾', '🎧', '☁️', '📁', '🤖', '🚀', '💻', '🏖️', '🥤', '🍿', '🍕', '🍰', '⌨️', '🖱️', '🖥️', '📱', '🎨', '📚', '📜', '✈️', '💺'];
 
 const emptyReward = {
   title: '',
@@ -45,7 +45,7 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
     return () => URL.revokeObjectURL(url);
   }, [imageFile]);
 
-  const categories = ["ALL", "Hardware", "Software", "Training", "Lifestyle"];
+  const categories = ["ALL", "Reimbursement", "CashOut", "Hardware", "Software", "Training", "Lifestyle"];
 
   const filteredRewards = activeCategory === "ALL" 
     ? rewards 
@@ -173,7 +173,7 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
           </div>
           <div className="reward-editor-grid">
             <label>商品名称<input className="cyber-input" value={rewardForm.title} maxLength={255} onChange={e => handleFormChange('title', e.target.value)} required /></label>
-            <label>商品分类<select className="cyber-select" value={rewardForm.category} onChange={e => handleFormChange('category', e.target.value)}>{categories.slice(1).map(category => <option key={category} value={category}>{category}</option>)}</select></label>
+            <label>商品分类<select className="cyber-select" value={rewardForm.category} onChange={e => handleFormChange('category', e.target.value)}>{categories.slice(1).map(category => <option key={category} value={category}>{category === 'Reimbursement' ? '行政报销 (打车/住宿/餐饮 1:1)' : category === 'CashOut' ? '现金折现 (打9折提现)' : category === 'Hardware' ? '办公外设 (硬件)' : category === 'Software' ? '效能工具 (软件)' : category === 'Training' ? '专业成长 (培训)' : category === 'Lifestyle' ? '生活福利 (休整)' : category}</option>)}</select></label>
             <label>兑换积分<input className="cyber-input" type="number" min="1" step="1" value={rewardForm.points_cost} onChange={e => handleFormChange('points_cost', e.target.value)} required /></label>
             <label>库存数量<input className="cyber-input" type="number" min="0" step="1" value={rewardForm.inventory} onChange={e => handleFormChange('inventory', e.target.value)} required /></label>
             <label>起兑等级<input className="cyber-input" type="number" min="1" max="5" step="1" value={rewardForm.level_required} onChange={e => handleFormChange('level_required', e.target.value)} required /></label>
@@ -198,7 +198,9 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
         {categories.map(cat => {
           let label = "全部商品";
-          if (cat === "Hardware") label = "办公外设 (硬件)";
+          if (cat === "Reimbursement") label = "行政报销 (1eP=1元)";
+          else if (cat === "CashOut") label = "现金折现 (9折提现)";
+          else if (cat === "Hardware") label = "办公外设 (硬件)";
           else if (cat === "Software") label = "效能工具 (软件)";
           else if (cat === "Training") label = "专业成长 (培训)";
           else if (cat === "Lifestyle") label = "生活福利 (休整)";
@@ -248,7 +250,7 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '2rem' }}><RewardVisual value={r.image} size={48} /></span>
                     <div className="reward-card-tools">
-                      <span className="badge muted" style={{ fontSize: '0.65rem' }}>{r.category === 'Hardware' ? '硬件' : r.category === 'Software' ? '软件' : r.category === 'Training' ? '培训' : '生活'}</span>
+                      <span className="badge muted" style={{ fontSize: '0.65rem' }}>{r.category === 'Reimbursement' ? '报销 (1:1)' : r.category === 'CashOut' ? '折现 (9折)' : r.category === 'Hardware' ? '硬件' : r.category === 'Software' ? '软件' : r.category === 'Training' ? '培训' : '生活'}</span>
                       {isAdmin && <><button type="button" title="编辑商品" onClick={() => beginEdit(r)}><Pencil size={14} /></button><button type="button" title="删除商品" className="danger" onClick={() => handleDeleteReward(r)}><Trash2 size={14} /></button></>}
                     </div>
                   </div>
