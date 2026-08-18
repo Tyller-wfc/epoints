@@ -8,6 +8,9 @@ export class Duty {
   @Column({ name: 'user_id', type: 'varchar', length: 255 })
   user_id: string;
 
+  @Column({ name: 'duty_date', type: 'varchar', length: 10, nullable: true, default: null })
+  duty_date: string | null;
+
   @Column({ name: 'shift_start' })
   shift_start: string;
 

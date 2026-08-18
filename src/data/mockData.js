@@ -180,6 +180,14 @@ export const setActiveDuty = async (dutyId) => {
   return postJson('/duty/active', { dutyId });
 };
 
+export const createDuty = async (data) => {
+  return postJson('/duty', data);
+};
+
+export const deleteDuty = async (dutyId) => {
+  return deleteJson(`/duty/${dutyId}`);
+};
+
 export const penalizeNegligence = async (ticketId) => {
   return postJson('/tickets/negligence', { ticketId });
 };

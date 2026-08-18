@@ -196,6 +196,16 @@ export class EpointsController {
     return this.epointsService.setActiveDuty(request.user.sub, dutyId);
   }
 
+  @Post('duty')
+  async createDuty(@Req() request: any, @Body() data: { userId: string; dutyDate: string; shiftStart: string; shiftEnd: string }) {
+    return this.epointsService.createDuty(request.user.sub, data);
+  }
+
+  @Delete('duty/:id')
+  async deleteDuty(@Req() request: any, @Param('id') id: string) {
+    return this.epointsService.deleteDuty(request.user.sub, id);
+  }
+
   @Post('system/reset')
   async resetData(@Req() request: any) {
     return this.epointsService.resetData(request.user.sub);

@@ -968,6 +968,36 @@ export class EpointsService {
     return this.getAppState(requesterId);
   }
 
+  async createDuty(requesterId: string, data: { userId: string; dutyDate: string; shiftStart: string; shiftEnd: string }) {
+    await this.assertAdmin(requesterId);
+    const user = await this.userRepo.findOne({ where: { id: data.userId } });
+    if (!user) throw new NotFoundException('人员不存在');
+    if (!data.dutyDate || !/^\d{4}-\d{2}-\d{2}$/.test(data.dutyDate)) throw new BadRequestException('请提供有效的排班日期（格式 YYYY-MM-DD）');
+    if (!data.shiftStart || !data.shiftEnd) throw new BadRequestException('请提供班次开始和结束时间');
+
+    const id = `duty-${randomUUID().slice(0, 8)}`;
+    const duty = this.dutyRepo.create({
+      id,
+      user_id: data.userId,
+      duty_date: data.dutyDate,
+      shift_start: data.shiftStart,
+      shift_end: data.shiftEnd,
+      is_active: false,
+    });
+    await this.dutyRepo.save(duty);
+    await this.pushFeed('system', `【排班更新】管理员为 ${user.name} 新增了 ${data.dutyDate} 的值班排班（${data.shiftStart}–${data.shiftEnd}）。`);
+    return this.getAppState(requesterId);
+  }
+
+  async deleteDuty(requesterId: string, dutyId: string) {
+    await this.assertAdmin(requesterId);
+    const duty = await this.dutyRepo.findOne({ where: { id: dutyId } });
+    if (!duty) throw new NotFoundException('排班记录不存在');
+    if (duty.is_active) throw new BadRequestException('当前在岗的排班记录不能删除，请先切换到其他人值班后再删除');
+    await this.dutyRepo.delete({ id: dutyId });
+    return this.getAppState(requesterId);
+  }
+
   async resetData(requesterId: string) {
     await this.assertAdmin(requesterId);
     const usersWithAvatars = await this.userRepo.createQueryBuilder('user').addSelect('user.avatarObjectKey').getMany();

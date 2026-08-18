@@ -16,6 +16,8 @@
     "migrate:simplified-roles": "node scripts/migrate-simplified-role-domain.cjs",
     "migrate:service": "node scripts/migrate-service-system.cjs",
     "migrate:service-mission-settlement": "node scripts/migrate-service-mission-settlement.cjs",
+    "migrate:duty-date": "node scripts/migrate-duty-date.cjs",
+    "migrate:user-id": "node scripts/migrate-user-id.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

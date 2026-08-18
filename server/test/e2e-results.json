@@ -1,7 +1,7 @@
 {
-  "total": 22,
-  "passed": 21,
-  "failed": 1,
+  "total": 23,
+  "passed": 23,
+  "failed": 0,
   "results": [
     {
       "module": "Auth",
@@ -25,19 +25,19 @@
       "module": "State",
       "name": "Fetch full system state (/state)",
       "status": "PASS",
-      "details": "Found 1 users, 5 missions"
+      "details": "Found 2 users, 2 missions"
     },
     {
       "module": "Personnel",
       "name": "Fetch personnel list (/personnel)",
       "status": "PASS",
-      "details": "Found 1 personnel records"
+      "details": "Found 2 personnel records"
     },
     {
       "module": "Missions",
       "name": "Create new mission (/missions/create)",
       "status": "PASS",
-      "details": "Mission created with ID m-1785313126528"
+      "details": "Mission created with ID m-1787024192054"
     },
     {
       "module": "Missions",
@@ -67,19 +67,19 @@
       "module": "Rewards",
       "name": "Add new reward item (/rewards)",
       "status": "PASS",
-      "details": "Reward added ID r-0333f13dbde34786a32ea441498d63"
+      "details": "Reward added ID r-e882cd9db3d3406ebe5658ed818c5f"
     },
     {
       "module": "Rewards",
       "name": "Purchase reward (/rewards/purchase)",
       "status": "PASS",
-      "details": "Purchased successfully, tx ID tx-1785313126744"
+      "details": "Purchased successfully, tx ID tx-1787024192418"
     },
     {
       "module": "Rewards",
       "name": "Fetch transactions (/transactions)",
       "status": "PASS",
-      "details": "Found 1 transactions"
+      "details": "Found 3 transactions"
     },
     {
       "module": "Rewards",
@@ -91,7 +91,7 @@
       "module": "Tickets",
       "name": "Raise emergency ticket (/tickets/raise)",
       "status": "PASS",
-      "details": "Ticket raised ID t-1785313126817"
+      "details": "Ticket raised ID t-1787024192459"
     },
     {
       "module": "Tickets",
@@ -109,19 +109,25 @@
       "module": "CustomerService",
       "name": "Create external customer (/service-center/customers)",
       "status": "PASS",
-      "details": "Customer created ID c-e1bef872-331f-4521-82c8-7eb68ee67f82"
+      "details": "Customer created ID c-f904755d-c2f2-4e80-9b2d-c2d9e23ac9e3"
     },
     {
       "module": "CustomerService",
       "name": "Create service record (/service-center/records)",
-      "status": "FAIL",
-      "details": "{\"statusCode\":500,\"message\":\"Internal server error\"}"
+      "status": "PASS",
+      "details": "Service record created ID sr-92aaeb06-1018-436e-9069-bf7ff7db74d3"
+    },
+    {
+      "module": "CustomerService",
+      "name": "Transition service record status",
+      "status": "PASS",
+      "details": "Status updated to Accepted"
     },
     {
       "module": "MinIO Storage",
       "name": "Upload user avatar to MinIO",
       "status": "PASS",
-      "details": "Uploaded avatar URL: /api/personnel/u-2/avatar?v=0c8b020c-a7f2-44aa-b818-339549c25730.png"
+      "details": "Uploaded avatar URL: /api/personnel/u-2/avatar?v=7292e28f-100c-45cc-ad9c-335982ea6458.png"
     },
     {
       "module": "MinIO Storage",

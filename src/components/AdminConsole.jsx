@@ -1,24 +1,362 @@
-import React, { useState } from 'react';
-import { PlusCircle, Check, X, SlidersHorizontal, ShoppingCart, UserCheck, Send, Save, Power } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { PlusCircle, Check, X, SlidersHorizontal, ShoppingCart, UserCheck, Send, Save, Power, CalendarDays, Trash2, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import AttachmentPicker from './AttachmentPicker';
 import PersonnelManager from './PersonnelManager';
 
-export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onUpdateWecomConfig, onTestWecomWebhook, onLoadPersonnel, onUpdatePersonnel, onCreatePersonnel, onDeletePersonnel, onUpdatePersonnelAvatar, onResetPersonnelAvatar, onPreviewMissionRecipients }) {
+// ─── 排班管理子组件 ────────────────────────────────────────────────────────────
+function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDuty }) {
+  // 周视图偏移（0 = 本周）
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  // 新增排班表单状态
+  const [formUserId, setFormUserId] = useState(users[0]?.id || '');
+  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formShiftPreset, setFormShiftPreset] = useState('全天');
+  const [formStart, setFormStart] = useState('00:00');
+  const [formEnd, setFormEnd] = useState('24:00');
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+
+  const SHIFT_PRESETS = {
+    '全天':   { start: '00:00', end: '24:00' },
+    '早班':   { start: '08:00', end: '18:00' },
+    '晚班':   { start: '18:00', end: '24:00' },
+    '夜班':   { start: '22:00', end: '08:00' },
+    '自定义': null,
+  };
+
+  const handlePresetChange = (preset) => {
+    setFormShiftPreset(preset);
+    if (SHIFT_PRESETS[preset]) {
+      setFormStart(SHIFT_PRESETS[preset].start);
+      setFormEnd(SHIFT_PRESETS[preset].end);
+    }
+  };
+
+  // 计算本周（偏移后）的周一到周日
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay(); // 1=周一
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dayOfWeek + 1 + weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.toISOString().slice(0, 10);
+    });
+  }, [weekOffset]);
+
+  const weekLabel = useMemo(() => {
+    if (weekOffset === 0) return '本周';
+    if (weekOffset === 1) return '下周';
+    if (weekOffset === -1) return '上周';
+    const d = new Date(weekDays[0]);
+    return `${d.getMonth() + 1}月${d.getDate()}日起`;
+  }, [weekOffset, weekDays]);
+
+  const DAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  // 按日期分组 duty 列表（含 duty_date 为 null 的旧记录）
+  const dutyByDate = useMemo(() => {
+    const map = {};
+    for (const d of duty) {
+      const key = d.duty_date || '__legacy__';
+      if (!map[key]) map[key] = [];
+      map[key].push(d);
+    }
+    return map;
+  }, [duty]);
+
+  // 无日期的旧记录
+  const legacyDuty = dutyByDate['__legacy__'] || [];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setFormSubmitting(true);
+    setFormError('');
+    try {
+      await onCreateDuty({ userId: formUserId, dutyDate: formDate, shiftStart: formStart, shiftEnd: formEnd });
+    } catch (err) {
+      setFormError(err.message || '添加排班失败');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (dutyId) => {
+    setDeletingId(dutyId);
+    try {
+      await onDeleteDuty(dutyId);
+    } catch (err) {
+      alert(err.message || '删除失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="glass-panel" style={{ padding: '24px' }}>
+      <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <CalendarDays size={18} />
+        技术运维值班排班管理
+      </h3>
+
+      {/* ── 新增排班表单 ── */}
+      <form onSubmit={handleSubmit} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-cyan)', borderRadius: '6px', padding: '16px', marginBottom: '20px' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '0.5px' }}>
+          ＋ 新增排班记录
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+          {/* 人员 */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>值班人员</label>
+            <select className="cyber-select" value={formUserId} onChange={e => setFormUserId(e.target.value)} style={{ fontSize: '0.82rem', width: '100%' }}>
+              {users.filter(u => u.enabled !== false).map(u => (
+                <option key={u.id} value={u.id}>{u.name}（{u.role}）</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 日期 */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>排班日期</label>
+            <input
+              type="date"
+              className="cyber-input"
+              value={formDate}
+              onChange={e => setFormDate(e.target.value)}
+              required
+              style={{ fontSize: '0.82rem', width: '100%' }}
+            />
+          </div>
+
+          {/* 班次预设 */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>班次</label>
+            <select className="cyber-select" value={formShiftPreset} onChange={e => handlePresetChange(e.target.value)} style={{ fontSize: '0.82rem', width: '100%' }}>
+              {Object.keys(SHIFT_PRESETS).map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {/* 自定义时间段 */}
+          {formShiftPreset === '自定义' && (
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>开始时间</label>
+                <input type="time" className="cyber-input" value={formStart} onChange={e => setFormStart(e.target.value)} required style={{ fontSize: '0.82rem', width: '100%' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>结束时间</label>
+                <input type="time" className="cyber-input" value={formEnd} onChange={e => setFormEnd(e.target.value)} required style={{ fontSize: '0.82rem', width: '100%' }} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {formShiftPreset !== '自定义' && (
+          <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Clock size={12} /> 时段：{formStart} – {formEnd}
+          </div>
+        )}
+
+        {formError && <div className="attachment-error" style={{ marginTop: '8px' }}>{formError}</div>}
+
+        <button
+          type="submit"
+          disabled={formSubmitting}
+          className="cyber-btn success"
+          style={{ marginTop: '12px', padding: '7px 18px', fontSize: '0.8rem' }}
+        >
+          <PlusCircle size={14} />
+          {formSubmitting ? '提交中...' : '确认添加排班'}
+        </button>
+      </form>
+
+      {/* ── 周视图导航 ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <CalendarDays size={14} style={{ color: 'var(--accent-cyan)' }} />
+          {weekLabel}排班概览
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+            （{weekDays[0]} ~ {weekDays[6]}）
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button className="cyber-btn" onClick={() => setWeekOffset(w => w - 1)} style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
+            <ChevronLeft size={14} />
+          </button>
+          {weekOffset !== 0 && (
+            <button className="cyber-btn" onClick={() => setWeekOffset(0)} style={{ padding: '4px 10px', fontSize: '0.72rem' }}>
+              回到本周
+            </button>
+          )}
+          <button className="cyber-btn" onClick={() => setWeekOffset(w => w + 1)} style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── 周视图格子 ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', marginBottom: '20px' }}>
+        {weekDays.map((dateStr, i) => {
+          const dayDuties = dutyByDate[dateStr] || [];
+          const isToday = dateStr === today;
+          return (
+            <div
+              key={dateStr}
+              style={{
+                background: isToday ? 'rgba(0,212,255,0.06)' : 'rgba(0,0,0,0.2)',
+                border: `1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-muted)'}`,
+                borderRadius: '4px',
+                padding: '8px 6px',
+                minHeight: '90px',
+              }}
+            >
+              <div style={{ fontSize: '0.68rem', fontWeight: 'bold', color: isToday ? 'var(--accent-cyan)' : 'var(--text-muted)', marginBottom: '4px' }}>
+                {DAY_NAMES[i]}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                {dateStr.slice(5)}
+              </div>
+              {dayDuties.length === 0 ? (
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: '10px' }}>—</div>
+              ) : (
+                dayDuties.map(d => {
+                  const u = users.find(u => u.id === d.user_id);
+                  return (
+                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                      {u?.avatar && (
+                        <img src={u.avatar} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', border: d.is_active ? '1px solid var(--accent-green)' : '1px solid transparent', flexShrink: 0 }} />
+                      )}
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontSize: '0.68rem', color: d.is_active ? 'var(--accent-green)' : 'var(--text-bright)', fontWeight: d.is_active ? 'bold' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {u?.name || '—'}
+                        </div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{d.shift_start}–{d.shift_end}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── 全量排班列表 ── */}
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '10px', borderTop: '1px solid var(--border-muted)', paddingTop: '14px' }}>
+        全部排班记录（按日期排序）
+      </div>
+
+      {duty.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', padding: '20px' }}>
+          暂无排班记录，请通过上方表单新增。
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto', paddingRight: '4px' }}>
+          {/* 有日期的记录按日期排序 */}
+          {[...duty]
+            .sort((a, b) => {
+              if (!a.duty_date && !b.duty_date) return 0;
+              if (!a.duty_date) return 1;
+              if (!b.duty_date) return -1;
+              return a.duty_date.localeCompare(b.duty_date);
+            })
+            .map(d => {
+              const u = users.find(u => u.id === d.user_id) || { name: '未知人员', avatar: '' };
+              const isActive = d.is_active;
+              return (
+                <div
+                  key={d.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    padding: '10px 14px',
+                    borderRadius: '4px',
+                    background: isActive ? 'rgba(74,222,128,0.04)' : 'rgba(0,0,0,0.2)',
+                    border: `1px solid ${isActive ? 'var(--accent-green)' : 'var(--border-muted)'}`,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                    <img src={u.avatar} alt={u.name} style={{ width: '30px', height: '30px', borderRadius: '50%', border: isActive ? '2px solid var(--accent-green)' : '1px solid var(--border-muted)', flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{u.name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {d.duty_date ? (
+                          <span>📅 {d.duty_date}（{['日', '一', '二', '三', '四', '五', '六'][new Date(d.duty_date + 'T12:00:00').getDay()]}）</span>
+                        ) : (
+                          <span style={{ color: 'var(--accent-orange)' }}>历史记录（无日期）</span>
+                        )}
+                        <span><Clock size={10} style={{ verticalAlign: 'middle' }} /> {d.shift_start} – {d.shift_end}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {isActive ? (
+                      <span className="badge green" style={{ fontSize: '0.7rem' }}>在岗值班中</span>
+                    ) : (
+                      <button
+                        onClick={() => onSetActiveDuty(d.id)}
+                        className="cyber-btn"
+                        style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+                      >
+                        <UserCheck size={12} /> 切换在岗
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (isActive) { alert('当前在岗的排班记录不能删除，请先切换到其他人值班后再删除。'); return; }
+                        if (window.confirm(`确定删除 ${u.name} 在 ${d.duty_date || '未知日期'} 的排班记录吗？`)) {
+                          handleDelete(d.id);
+                        }
+                      }}
+                      disabled={deletingId === d.id}
+                      className="cyber-btn danger"
+                      style={{ padding: '4px 8px', fontSize: '0.72rem', opacity: isActive ? 0.4 : 1 }}
+                      title={isActive ? '在岗记录不可删除' : '删除此排班'}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {legacyDuty.length > 0 && (
+        <div style={{ marginTop: '10px', fontSize: '0.72rem', color: 'var(--text-muted)', padding: '8px', background: 'rgba(255,165,0,0.05)', border: '1px solid rgba(255,165,0,0.15)', borderRadius: '4px' }}>
+          ⚠️ 存在 {legacyDuty.length} 条无排班日期的历史记录（系统升级前创建），可直接删除或通过"切换在岗"继续使用。
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 主组件 ───────────────────────────────────────────────────────────────────
+export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplier, onCreateMission, onDeliverReward, onSetActiveDuty, onCreateDuty, onDeleteDuty, onUpdateWecomConfig, onTestWecomWebhook, onLoadPersonnel, onUpdatePersonnel, onCreatePersonnel, onDeletePersonnel, onUpdatePersonnelAvatar, onResetPersonnelAvatar, onPreviewMissionRecipients }) {
   const { missions, users, duty, currentUserId, wecomWebhook = {}, transactions = [], roles = [], taskDomains = [] } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
-  const isAdmin = currentUser.roleType === "Admin";
+  const isAdmin = currentUser.roleType === 'Admin';
 
-  const [webhookInput, setWebhookInput] = useState("");
+  const [webhookInput, setWebhookInput] = useState('');
   const [mentionInput, setMentionInput] = useState((wecomWebhook.mentionMobiles || []).join(', '));
   const [webhookStatus, setWebhookStatus] = useState(null);
   const [webhookBusy, setWebhookBusy] = useState(false);
 
   // 新任务表单状态
-  const [newTitle, setNewTitle] = useState("");
-  const [newDesc, setNewDesc] = useState("");
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
   const [newBase, setNewBase] = useState(50);
-  const [newPrimaryDomain, setNewPrimaryDomain] = useState("");
-  const [newPriority, setNewPriority] = useState("Normal");
+  const [newPrimaryDomain, setNewPrimaryDomain] = useState('');
+  const [newPriority, setNewPriority] = useState('Normal');
   const [recipientPreview, setRecipientPreview] = useState(null);
   const [newMult, setNewMult] = useState(1.0);
   const [newFiles, setNewFiles] = useState([]);
@@ -29,10 +367,10 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   const [tempMultipliers, setTempMultipliers] = useState({});
 
   // 待验证任务
-  const pendingMissions = missions.filter(m => m.status === "Pending Verification");
+  const pendingMissions = missions.filter(m => m.status === 'Pending Verification');
 
-  // 待发放商品 (从 transactions 里捞)
-  const pendingDeliveries = transactions.filter(t => t.status === "Pending Delivery");
+  // 待发放商品
+  const pendingDeliveries = transactions.filter(t => t.status === 'Pending Delivery');
 
   const handleCreateMissionSubmit = async (e) => {
     e.preventDefault();
@@ -42,11 +380,11 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     try {
       const primaryDomainId = newPrimaryDomain || taskDomains[0]?.id;
       await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId }, newFiles);
-      setNewTitle("");
-      setNewDesc("");
+      setNewTitle('');
+      setNewDesc('');
       setNewBase(500);
-      setNewPrimaryDomain("");
-      setNewPriority("Normal");
+      setNewPrimaryDomain('');
+      setNewPriority('Normal');
       setRecipientPreview(null);
       setNewMult(1.0);
       setNewFiles([]);
@@ -58,10 +396,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   };
 
   const handleMultiplierChangeLocal = (missionId, val) => {
-    setTempMultipliers(prev => ({
-      ...prev,
-      [missionId]: val
-    }));
+    setTempMultipliers(prev => ({ ...prev, [missionId]: val }));
   };
 
   const handleApplyMultiplier = (missionId) => {
@@ -70,7 +405,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     onUpdateMultiplier(missionId, val);
   };
 
-  const parseMobiles = () => mentionInput.split(/[,，;；\s]+/).map(value => value.trim()).filter(Boolean);
+  const parseMobiles = () => mentionInput.split(/[,，;；\s]+/).map(v => v.trim()).filter(Boolean);
 
   const handleWebhookSubmit = async (e) => {
     e.preventDefault();
@@ -93,10 +428,10 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
-      
+
       {/* 待验证成果 & 待发放福利 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-        
+
         {/* 成果审核 */}
         <div className="glass-panel" style={{ padding: '24px' }}>
           <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -111,7 +446,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {pendingMissions.map(m => {
-                const earner = users.find(u => u.id === m.assigned_to) || { name: "未知人员" };
+                const earner = users.find(u => u.id === m.assigned_to) || { name: '未知人员' };
                 const earnPoints = Math.round(m.base_points * m.multiplier);
 
                 return (
@@ -122,34 +457,26 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                     </div>
 
                     <h4 style={{ color: 'var(--text-bright)', fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '6px' }}>{m.title}</h4>
-                    
+
                     <div style={{ padding: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '2px', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                       <strong>{earner.name} 提交的交付证明:</strong> {m.proof_of_work}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <button 
-                        onClick={() => onVerifyMission(m.id, true)} 
-                        className="cyber-btn success" 
-                        style={{ padding: '8px', fontSize: '0.75rem', width: '100%' }}
-                      >
+                      <button onClick={() => onVerifyMission(m.id, true)} className="cyber-btn success" style={{ padding: '8px', fontSize: '0.75rem', width: '100%' }}>
                         <Check size={14} /> 审核通过・拨付积分
                       </button>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button 
-                          onClick={() => onVerifyMission(m.id, false)} 
-                          className="cyber-btn" 
-                          style={{ flex: 1, padding: '6px', fontSize: '0.75rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
-                        >
+                        <button onClick={() => onVerifyMission(m.id, false)} className="cyber-btn" style={{ flex: 1, padding: '6px', fontSize: '0.75rem', borderColor: 'var(--border-muted)', background: 'transparent' }}>
                           普通驳回
                         </button>
-                        <button 
+                        <button
                           onClick={() => {
                             if (window.confirm(`确定要驳回 ${earner.name} 的成果申请，并判定为虚报成果/进度灌水，对其扣减 50 eP 积分吗？`)) {
                               onVerifyMission(m.id, false, true);
                             }
                           }}
-                          className="cyber-btn danger" 
+                          className="cyber-btn danger"
                           style={{ flex: 2, padding: '6px', fontSize: '0.75rem' }}
                         >
                           <X size={14} /> 判定虚报并驳回 (-50 eP)
@@ -177,25 +504,23 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {pendingDeliveries.map(t => {
-                const user = users.find(u => u.id === t.user_id) || { name: "未知人员" };
-                const item = state.rewards.find(r => r.id === t.reward_id) || { title: "未知商品", image: "📦" };
+                const user = users.find(u => u.id === t.user_id) || { name: '未知人员' };
+                const item = state.rewards.find(r => r.id === t.reward_id) || { title: '未知商品', image: '📦' };
 
                 return (
                   <div key={t.id} style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-muted)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ color: 'var(--text-bright)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                        {typeof item.image === 'string' && (/^https?:\/\//.test(item.image) || item.image.startsWith('/api/')) ? <img className="reward-visual" src={item.image} alt="" style={{ width: 24, height: 24, verticalAlign: 'middle', marginRight: '6px' }} /> : <>{item.image} </>}{item.title}
+                        {typeof item.image === 'string' && (/^https?:\/\//.test(item.image) || item.image.startsWith('/api/'))
+                          ? <img className="reward-visual" src={item.image} alt="" style={{ width: 24, height: 24, verticalAlign: 'middle', marginRight: '6px' }} />
+                          : <>{item.image} </>}{item.title}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                         申请人: <strong>{user.name}</strong> | 消耗积分: {t.points_spent} eP
                       </div>
                     </div>
 
-                    <button 
-                      onClick={() => onDeliverReward(t.id)} 
-                      className="cyber-btn success" 
-                      style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-                    >
+                    <button onClick={() => onDeliverReward(t.id)} className="cyber-btn success" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
                       <Check size={14} /> 确认发放
                     </button>
                   </div>
@@ -207,9 +532,9 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
 
       </div>
 
-      {/* 核心任务分值调控 & 换班管理 */}
+      {/* 核心任务分值调控 & 排班管理 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-        
+
         {/* 动态倍率调控中心 */}
         <div className="glass-panel" style={{ padding: '24px' }}>
           <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -257,57 +582,14 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
           </div>
         </div>
 
-        {/* 换班制度管理 */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.05rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <UserCheck size={18} />
-            技术值班换班排班管理
-          </h3>
-          
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: '1.4', marginBottom: '16px' }}>
-            点击下方的“接替值班”可以动态调配当前在岗的保障人员。若系统被申报红色警报，工单将指派给在岗值班人员。
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {duty.map(d => {
-              const user = users.find(u => u.id === d.user_id) || { name: "未知人员", avatar: "" };
-              return (
-                <div 
-                  key={d.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    background: d.is_active ? 'rgba(74,222,128,0.03)' : 'rgba(0,0,0,0.2)',
-                    border: d.is_active ? '1px solid var(--accent-green)' : '1px solid var(--border-muted)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img src={user.avatar} alt={user.name} style={{ width: '28px', height: '28px', borderRadius: '50%' }} />
-                    <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{user.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>排班时段: {d.shift_start} - {d.shift_end}</div>
-                    </div>
-                  </div>
-
-                  {d.is_active ? (
-                    <span className="badge green" style={{ fontSize: '0.7rem' }}>在岗值班中</span>
-                  ) : (
-                    <button 
-                      onClick={() => onSetActiveDuty(d.id)}
-                      className="cyber-btn"
-                      style={{ padding: '4px 10px', fontSize: '0.7rem' }}
-                    >
-                      接替值班
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* 技术值班排班管理 */}
+        <DutyScheduler
+          duty={duty}
+          users={users}
+          onSetActiveDuty={onSetActiveDuty}
+          onCreateDuty={onCreateDuty}
+          onDeleteDuty={onDeleteDuty}
+        />
 
       </div>
 
@@ -363,11 +645,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
 
               <div>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>初始倍率</label>
-                <select
-                  className="cyber-select"
-                  value={newMult}
-                  onChange={(e) => setNewMult(parseFloat(e.target.value))}
-                >
+                <select className="cyber-select" value={newMult} onChange={(e) => setNewMult(parseFloat(e.target.value))}>
                   <option value="1.0">1.0x 标准</option>
                   <option value="1.2">1.2x 引导</option>
                   <option value="1.5">1.5x 加急</option>
@@ -378,14 +656,14 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
 
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>任务领域
-              <select
-                className="cyber-select"
-                value={newPrimaryDomain || taskDomains[0]?.id || ''}
-                onChange={(e) => { setNewPrimaryDomain(e.target.value); setRecipientPreview(null); }}
-                style={{ marginTop: '6px' }}
-              >
-                {taskDomains.map(domain => <option value={domain.id} key={domain.id}>{domain.name}</option>)}
-              </select>
+                <select
+                  className="cyber-select"
+                  value={newPrimaryDomain || taskDomains[0]?.id || ''}
+                  onChange={(e) => { setNewPrimaryDomain(e.target.value); setRecipientPreview(null); }}
+                  style={{ marginTop: '6px' }}
+                >
+                  {taskDomains.map(domain => <option value={domain.id} key={domain.id}>{domain.name}</option>)}
+                </select>
               </label>
               <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block' }}>优先级
                 <select className="cyber-select" value={newPriority} onChange={(e) => setNewPriority(e.target.value)} style={{ marginTop: '6px' }}>

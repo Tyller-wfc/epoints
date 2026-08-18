@@ -39,7 +39,7 @@ async function runE2ETests() {
   try {
     const loginRes = await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: 'u2', password: 'demo123' })
+      body: JSON.stringify({ username: 'wangfangchao', password: 'wangfangchao' })
     });
     if (loginRes.ok && loginRes.data.accessToken) {
       token = loginRes.data.accessToken;
@@ -50,7 +50,7 @@ async function runE2ETests() {
 
     const badLoginRes = await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: 'u2', password: 'wrongpassword' })
+      body: JSON.stringify({ username: 'wangfangchao', password: 'wrongpassword' })
     });
     if (badLoginRes.status === 400 || badLoginRes.status === 401) {
       recordResult('Auth', 'Block invalid password login', true, `Blocked with HTTP ${badLoginRes.status}`);

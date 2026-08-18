@@ -1,7 +1,101 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ShieldAlert, AlertTriangle, CheckSquare, Clock, Coins, Users, AlertOctagon } from 'lucide-react';
 import AttachmentPicker from './AttachmentPicker';
 import AttachmentList from './AttachmentList';
+
+function WeeklyScheduleView({ duty, users }) {
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay(); // 1=周一
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dayOfWeek + 1);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.toISOString().slice(0, 10);
+    });
+  }, []);
+
+  const DAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  return (
+    <div style={{ marginTop: '20px', borderTop: '1px dashed var(--border-muted)', paddingTop: '16px' }}>
+      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-bright)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Clock size={12} style={{ color: 'var(--accent-green)' }} /> 
+        <span>本周值班排班表</span>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'normal', fontFamily: 'monospace' }}>
+          ({weekDays[0].slice(5)} ~ {weekDays[6].slice(5)})
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+        {weekDays.map((dateStr, i) => {
+          const dayDuties = duty.filter(d => d.duty_date === dateStr);
+          const isToday = dateStr === todayStr;
+          return (
+            <div 
+              key={dateStr}
+              style={{
+                background: isToday ? 'rgba(74,222,128,0.06)' : 'rgba(0,0,0,0.15)',
+                border: `1px solid ${isToday ? 'var(--accent-green)' : 'var(--border-muted)'}`,
+                borderRadius: '4px',
+                padding: '6px 2px',
+                textAlign: 'center',
+                minHeight: '75px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: isToday ? '0 0 10px rgba(74,222,128,0.05)' : 'none'
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.65rem', color: isToday ? 'var(--accent-green)' : 'var(--text-muted)', fontWeight: 'bold' }}>
+                  {DAY_NAMES[i]}
+                </div>
+                <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  {dateStr.slice(5)}
+                </div>
+              </div>
+              
+              {dayDuties.length === 0 ? (
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.15)', margin: '4px 0' }}>—</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center', marginTop: '4px' }}>
+                  {dayDuties.map(d => {
+                    const u = users.find(u => u.id === d.user_id);
+                    const isUserActive = d.is_active;
+                    return (
+                      <div key={d.id} title={`${u?.name || '未知'}: ${d.shift_start}-${d.shift_end} ${isUserActive ? '(当前在岗)' : ''}`}>
+                        {u?.avatar ? (
+                          <img 
+                            src={u.avatar} 
+                            alt={u.name} 
+                            style={{ 
+                              width: '18px', 
+                              height: '18px', 
+                              borderRadius: '50%', 
+                              border: isUserActive ? '1.5px solid var(--accent-green)' : '1.5px solid transparent',
+                              boxShadow: isUserActive ? '0 0 5px var(--accent-green-glow)' : 'none',
+                              display: 'block'
+                            }} 
+                          />
+                        ) : (
+                          <span style={{ fontSize: '0.65rem', color: isUserActive ? 'var(--accent-green)' : 'var(--text-bright)' }}>
+                            {u?.name?.slice(0, 2)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, onPenalizeNegligence, onFlagSecondaryIncident, onAcknowledgeTicket }) {
   const { tickets, duty, users, currentUserId } = state;
@@ -150,6 +244,9 @@ export default function SupportCenter({ state, onRaiseAlert, onResolveTicket, on
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '20px' }}>
               当生产环境发生故障或影响客户体验的重大Bug时，系统根据值班表自动将红色警报故障分派给当前值班的研发人员，并提供极速响应的积分加成激励。
             </p>
+
+            {/* 本周值班排班表 */}
+            <WeeklyScheduleView duty={duty} users={users} />
           </div>
 
         </div>

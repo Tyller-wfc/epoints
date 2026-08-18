@@ -198,7 +198,7 @@ export class CustomerServiceService {
           allocationWeight: Number(item.allocationWeight),
         })));
       }
-      await manager.save(Feed, manager.create(Feed, { id: `f-${randomUUID()}`, type: 'service', message: `【客户服务】${customer.name} 的服务事项“${title}”已登记。`, timestamp: new Date() }));
+      await manager.save(Feed, manager.create(Feed, { id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`, type: 'service', message: `【客户服务】${customer.name} 的服务事项“${title}”已登记。`, timestamp: new Date() }));
     });
     return this.getCenter(requesterId);
   }
@@ -317,7 +317,7 @@ export class CustomerServiceService {
         await manager.save(ServiceRecord, record);
       }
       await manager.save(Feed, manager.create(Feed, {
-        id: `f-${randomUUID()}`,
+        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         type: 'service',
         message: `【服务评价】${participantUser.name} 在“${record.title}”中获得 ${totalScore} 分，结算 ${record.settlementMode === 'Standalone' ? `${pointsAwarded} eP` : '关联任务调整分'}。`,
         timestamp: new Date(),

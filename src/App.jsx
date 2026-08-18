@@ -18,6 +18,8 @@ import {
   raiseAlert, 
   resolveTicket, 
   setActiveDuty,
+  createDuty,
+  deleteDuty,
   penalizeNegligence,
   flagSecondaryIncident,
   acknowledgeTicket,
@@ -211,6 +213,14 @@ function App() {
 
   const handleSetActiveDuty = async (dutyId) => {
     setState(await setActiveDuty(dutyId));
+  };
+
+  const handleCreateDuty = async (data) => {
+    setState(await createDuty(data));
+  };
+
+  const handleDeleteDuty = async (dutyId) => {
+    setState(await deleteDuty(dutyId));
   };
 
   const handlePenalizeNegligence = async (ticketId) => {
@@ -449,6 +459,8 @@ function App() {
             onCreateMission={handleCreateMission}
             onDeliverReward={handleDeliverReward}
             onSetActiveDuty={handleSetActiveDuty}
+            onCreateDuty={handleCreateDuty}
+            onDeleteDuty={handleDeleteDuty}
             onUpdateWecomConfig={handleUpdateWecomConfig}
             onTestWecomWebhook={testWecomWebhook}
             onLoadPersonnel={getPersonnel}

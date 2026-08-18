@@ -77,7 +77,7 @@ INSERT INTO users (
     enabled,
     availability
 ) VALUES (
-    'u-1',
+    'u-2',
     '王方超',
     '/avatars/senior_dev.png',
     NULL,
@@ -99,7 +99,7 @@ INSERT INTO auth_credentials (
     username,
     password_hash
 ) VALUES (
-    'u-1',
+    'u-2',
     'wangfangchao',
     '$2b$12$GWu5U8zGtyCPoM1gsUjAleiIY2ogK.vf0AxH1cS1qc06mUSi4Hq1q'
 );
