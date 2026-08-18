@@ -80,31 +80,7 @@ else
     log_info "服务已启动"
 fi
 
-# ── 步骤 5：同步 Nginx 配置（含 client_max_body_size 修复）────────────────
-log_step "同步 Nginx 配置..."
-NGINX_CONF_SRC="$APP_DIR/nginx.conf"
-NGINX_CONF_DEST="/etc/nginx/sites-available/epoints"
-NGINX_CONF_LINK="/etc/nginx/sites-enabled/epoints"
-
-if [ -f "$NGINX_CONF_SRC" ]; then
-    sudo cp "$NGINX_CONF_SRC" "$NGINX_CONF_DEST"
-    # 创建软链（已存在则跳过）
-    if [ ! -L "$NGINX_CONF_LINK" ]; then
-        sudo ln -sf "$NGINX_CONF_DEST" "$NGINX_CONF_LINK"
-        log_info "已创建 Nginx sites-enabled 软链"
-    fi
-    # 测试配置语法
-    if sudo nginx -t 2>/dev/null; then
-        sudo systemctl reload nginx
-        log_info "Nginx 配置已更新并重载"
-    else
-        log_warn "Nginx 配置语法检查失败，跳过重载（请手动执行 nginx -t 排查）"
-    fi
-else
-    log_warn "未找到 nginx.conf，跳过 Nginx 配置同步"
-fi
-
-# ── 步骤 6：等待服务就绪并验证 ───────────────────────────────────────────
+# ── 步骤 5：等待服务就绪并验证 ───────────────────────────────────────────
 log_step "等待服务就绪..."
 sleep 3
 
