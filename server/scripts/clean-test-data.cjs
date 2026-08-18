@@ -8,6 +8,16 @@ async function cleanTestData() {
   await conn.query("DELETE FROM tickets WHERE id NOT IN ('t-1')");
   await conn.query("DELETE FROM feed WHERE id NOT IN ('f-1','f-2','f-3')");
   await conn.query("DELETE FROM transactions");
+  
+  // Clean customer service tables and point ledgers
+  await conn.query("DELETE FROM service_evaluations");
+  await conn.query("DELETE FROM service_feedback");
+  await conn.query("DELETE FROM service_participants");
+  await conn.query("DELETE FROM service_mission_links");
+  await conn.query("DELETE FROM service_records");
+  await conn.query("DELETE FROM external_customers");
+  await conn.query("DELETE FROM point_ledger");
+
   console.log('Cleaned test data successfully.');
   await conn.end();
 }

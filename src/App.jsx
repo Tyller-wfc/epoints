@@ -261,33 +261,36 @@ function App() {
   return (
     <div className={`app-container ${hasCriticalAlert ? 'sos-active' : ''}`} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', transition: 'all 0.5s ease' }}>
       
-      {/* 红色警报闪烁横幅 */}
-      {hasCriticalAlert && (
-        <div 
-          style={{ 
-            background: 'var(--accent-red)', 
-            color: 'white', 
-            padding: '10px 20px', 
-            textAlign: 'center', 
-            fontSize: '0.9rem', 
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            boxShadow: '0 4px 20px rgba(255, 75, 75, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            animation: 'redAlertPulse 1s infinite alternate ease-in-out',
-            zIndex: 1000
-          }}
-        >
-          <AlertOctagon size={18} />
-          <span>警告：系统遭遇紧急故障，红色警报已触发！请值班保障人员立即前往“技术保障中心”进行排障！</span>
-        </div>
-      )}
+      {/* 顶部固定区域包装器 */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
+        {/* 红色警报闪烁横幅 */}
+        {hasCriticalAlert && (
+          <div 
+            style={{ 
+              background: 'var(--accent-red)', 
+              color: 'white', 
+              padding: '10px 20px', 
+              textAlign: 'center', 
+              fontSize: '0.9rem', 
+              fontWeight: 'bold',
+              letterSpacing: '1px',
+              boxShadow: '0 4px 20px rgba(255, 75, 75, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              animation: 'redAlertPulse 1s infinite alternate ease-in-out',
+              zIndex: 1000,
+              pointerEvents: 'auto'
+            }}
+          >
+            <AlertOctagon size={18} />
+            <span>警告：系统遭遇紧急故障，红色警报已触发！请值班保障人员立即前往“技术保障中心”进行排障！</span>
+          </div>
+        )}
 
-      {/* 顶部控制舱 Header */}
-      <header className="glass-panel" style={{ margin: '16px 16px 0 16px', padding: '16px 24px', borderRadius: 'var(--radius-md)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', zIndex: 10 }}>
+        {/* 顶部控制舱 Header */}
+        <header className="glass-panel" style={{ margin: '16px 16px 0 16px', padding: '16px 24px', borderRadius: 'var(--radius-md)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', zIndex: 10, pointerEvents: 'auto' }}>
         
         {/* 系统标志 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -413,6 +416,7 @@ function App() {
         </div>
 
       </header>
+      </div>
 
       {/* 主面板内容 */}
       <main style={{ flex: 1, padding: '24px 16px', maxWidth: '1400px', width: '100%', margin: '0 auto' }}>
@@ -449,7 +453,7 @@ function App() {
           />
         )}
         {activeTab === 'service' && (
-          <CustomerServiceCenter />
+          <CustomerServiceCenter showToast={showToast} />
         )}
         {activeTab === 'admin' && isAdmin && (
           <AdminConsole 

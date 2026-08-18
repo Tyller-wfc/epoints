@@ -1004,6 +1004,16 @@ export class EpointsService {
     const attachments = await this.attachmentRepo.find();
     await this.storageService.deleteObjects(usersWithAvatars.map((user) => user.avatarObjectKey).filter((key): key is string => Boolean(key)));
     await this.storageService.deleteObjects(attachments.map((item) => item.objectKey));
+    
+    // Clear customer service records and related entries
+    await this.dataSource.query('DELETE FROM service_evaluations');
+    await this.dataSource.query('DELETE FROM service_feedback');
+    await this.dataSource.query('DELETE FROM service_participants');
+    await this.dataSource.query('DELETE FROM service_mission_links');
+    await this.dataSource.query('DELETE FROM service_records');
+    await this.dataSource.query('DELETE FROM external_customers');
+
+    await this.pointLedgerRepo.delete({});
     await this.attachmentRepo.delete({});
     await this.missionRecipientRepo.delete({});
     await this.missionDomainRepo.delete({});

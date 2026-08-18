@@ -4,14 +4,13 @@ import {
   addServiceFeedback,
   createExternalCustomer,
   createServiceRecord,
-  evaluateServiceParticipant,
   getServiceCenter,
   transitionServiceRecord,
 } from '../data/mockData';
 
 const statusLabels = {
-  New: '待受理', Accepted: '已受理', 'In Progress': '服务中', 'Waiting Customer': '等待客户',
-  Completed: '已完成', 'Pending Evaluation': '待评价', Evaluated: '已评价', Reopened: '返工中', Escalated: '已升级', Cancelled: '已取消',
+  New: '待受理', Accepted: '已受理', 'In Progress': '服务中',
+  Completed: '已完成', 'Pending Evaluation': '待评价', Evaluated: '已评价', Reopened: '返工中', Cancelled: '已取消',
 };
 
 const sourceTypeLabels = {
@@ -31,16 +30,21 @@ const participantRoleLabels = {
 };
 
 const nextActions = {
-  New: ['Accepted'], Accepted: ['In Progress'], 'In Progress': ['Waiting Customer', 'Completed', 'Escalated'],
-  'Waiting Customer': ['In Progress', 'Completed'], Completed: ['Pending Evaluation', 'Reopened'],
-  'Pending Evaluation': ['Reopened'], Reopened: ['In Progress', 'Escalated'], Escalated: ['In Progress', 'Completed'],
+  New: ['In Progress'],
+  'In Progress': ['Pending Evaluation'],
+  'Pending Evaluation': ['Reopened'],
+  Reopened: ['Pending Evaluation'],
 };
 
-const defaultScores = {
-  outcomeScore: 85, professionalismScore: 85,
+const transitionLabels = {
+  'In Progress': '已受理',
+  'Pending Evaluation': '已完成',
+  Reopened: '返工',
 };
 
-export default function CustomerServiceCenter() {
+// defaultScores was removed as it's no longer needed for manual evaluation
+
+export default function CustomerServiceCenter({ showToast }) {
   const [data, setData] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState('');
@@ -49,6 +53,17 @@ export default function CustomerServiceCenter() {
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedMissions, setSelectedMissions] = useState([]);
+  const [settlementMode, setSettlementMode] = useState('Standalone');
+
+  useEffect(() => {
+    setSelectedMissions([]);
+  }, [selectedUsers]);
+
+  useEffect(() => {
+    if (settlementMode === 'Standalone') {
+      setSelectedMissions([]);
+    }
+  }, [settlementMode]);
 
   const load = async () => {
     try {
@@ -71,6 +86,26 @@ export default function CustomerServiceCenter() {
   const feedback = (data?.feedback || []).filter((item) => item.serviceRecordId === selectedId);
   const evaluations = data?.evaluations || [];
 
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+
+  const activeRecords = useMemo(() => {
+    return (data?.records || []).filter(
+      (record) => ['New', 'Accepted', 'In Progress', 'Reopened', 'Pending Evaluation'].includes(record.status)
+    );
+  }, [data]);
+
+  const archivedRecords = useMemo(() => {
+    return (data?.records || []).filter(
+      (record) => ['Completed', 'Evaluated', 'Cancelled'].includes(record.status)
+    );
+  }, [data]);
+
+  useEffect(() => {
+    if (selectedId && archivedRecords.some((r) => r.id === selectedId)) {
+      setArchiveExpanded(true);
+    }
+  }, [selectedId, archivedRecords]);
+
   const submit = async (operation) => {
     setBusy(true);
     setError('');
@@ -91,16 +126,19 @@ export default function CustomerServiceCenter() {
 
   const handleCreateCustomer = async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     if (await submit(() => createExternalCustomer(Object.fromEntries(form)))) {
-      event.currentTarget.reset();
+      formEl.reset();
       setShowCustomerForm(false);
+      showToast?.('success', '客户创建成功 ✓');
     }
   };
 
   const handleCreateRecord = async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     if (!selectedUsers.length) return setError('请至少选择一名服务人员');
     const baseWeight = Math.floor(100 / selectedUsers.length);
     const isOnCall = form.get('serviceMode') === 'On Call';
@@ -121,10 +159,12 @@ export default function CustomerServiceCenter() {
     }));
     const payload = { ...Object.fromEntries(form), settlementMode, participants: participantsPayload, missionLinks };
     if (await submit(() => createServiceRecord(payload))) {
-      event.currentTarget.reset();
+      formEl.reset();
       setSelectedUsers([]);
       setSelectedMissions([]);
+      setSettlementMode('Standalone');
       setShowRecordForm(false);
+      showToast?.('success', '服务记录创建成功 ✓');
     }
   };
 
@@ -181,7 +221,15 @@ export default function CustomerServiceCenter() {
             <option>P3</option>
           </select>
           <select className="cyber-select" name="serviceMode" defaultValue="Work Hours"><option value="Work Hours">工作时间服务</option><option value="On Call">非工作时间值班服务</option></select>
-          <select className="cyber-select" name="settlementMode" defaultValue="Standalone"><option value="Standalone">独立服务：影响个人 ePoints</option><option value="Mission Linked">关联任务：影响任务 ePoints</option></select>
+          <select 
+            className="cyber-select" 
+            name="settlementMode" 
+            value={settlementMode} 
+            onChange={(e) => setSettlementMode(e.target.value)}
+          >
+            <option value="Standalone">独立服务：影响个人 ePoints</option>
+            <option value="Mission Linked">关联任务：影响任务 ePoints</option>
+          </select>
           <input className="cyber-input" name="basePoints" type="number" min="0" max="1000" defaultValue="100" required />
           <input className="cyber-input" name="promisedAt" type="datetime-local" />
           <textarea className="cyber-input wide" name="description" placeholder="客户需求" rows={3} required />
@@ -189,20 +237,43 @@ export default function CustomerServiceCenter() {
           <div className="service-user-picker wide">
             {data.users.filter((item) => item.enabled && item.availability !== 'Leave').map((user) => (
               <label key={user.id} className={selectedUsers.includes(user.id) ? 'selected' : ''}>
-                <input type="checkbox" checked={selectedUsers.includes(user.id)} onChange={() => setSelectedUsers((items) => items.includes(user.id) ? items.filter((id) => id !== user.id) : [...items, user.id])} />
+                <input 
+                  type="radio" 
+                  name="serviceUserRadio"
+                  checked={selectedUsers.includes(user.id)} 
+                  onChange={() => setSelectedUsers([user.id])} 
+                />
                 <span>{user.name}<small>{user.role} · {user.availability}{user.id === data.activeDutyUserId ? ' · 当前值班' : ''}</small></span>
               </label>
             ))}
           </div>
-          <div className="service-mission-picker wide">
-            <strong>关联内部任务（仅任务关联模式使用）</strong>
-            {(data.missions || []).filter((item) => !['Completed', 'Cancelled'].includes(item.status)).map((mission) => (
-              <label key={mission.id} className={selectedMissions.includes(mission.id) ? 'selected' : ''}>
-                <input type="checkbox" checked={selectedMissions.includes(mission.id)} onChange={() => setSelectedMissions((items) => items.includes(mission.id) ? items.filter((id) => id !== mission.id) : [...items, mission.id])} />
-                <span>{mission.title}<small>{mission.base_points} eP · {mission.assigned_to ? (data.users.find((user) => user.id === mission.assigned_to)?.name || '已分派') : '未分派'}</small></span>
-              </label>
-            ))}
-          </div>
+          {settlementMode === 'Mission Linked' && (
+            <div className="service-mission-picker wide">
+              <strong>关联内部任务（仅列出该服务人员名下的任务）</strong>
+              {selectedUsers.length === 0 ? (
+                <div className="service-picker-info-text">请先选择一名服务人员以加载关联任务。</div>
+              ) : (
+                (() => {
+                  const filteredMissions = (data.missions || []).filter(
+                    (item) => !['Completed', 'Cancelled'].includes(item.status) && item.assigned_to === selectedUsers[0]
+                  );
+                  if (filteredMissions.length === 0) {
+                    return <div className="service-picker-info-text">该服务人员名下暂无可关联的未完成任务。</div>;
+                  }
+                  return filteredMissions.map((mission) => (
+                    <label key={mission.id} className={selectedMissions.includes(mission.id) ? 'selected' : ''}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedMissions.includes(mission.id)} 
+                        onChange={() => setSelectedMissions((items) => items.includes(mission.id) ? items.filter((id) => id !== mission.id) : [...items, mission.id])} 
+                      />
+                      <span>{mission.title}<small>{mission.base_points} eP · {mission.assigned_to ? (data.users.find((user) => user.id === mission.assigned_to)?.name || '已分派') : '未分派'}</small></span>
+                    </label>
+                  ));
+                })()
+              )}
+            </div>
+          )}
           <button className="cyber-btn success wide" disabled={busy}>创建服务记录</button>
         </form>
       )}
@@ -210,12 +281,51 @@ export default function CustomerServiceCenter() {
       <section className="service-workspace">
         <div className="service-list">
           {data.records.length === 0 && <div className="service-empty">暂无服务记录</div>}
-          {data.records.map((record) => (
-            <button key={record.id} className={record.id === selectedId ? 'active' : ''} onClick={() => setSelectedId(record.id)}>
-              <span className={`service-priority ${record.priority.toLowerCase()}`}>{record.priority}</span>
-              <span><strong>{record.title}</strong><small>{customerById.get(record.customerId)?.name} · {statusLabels[record.status] || record.status}</small></span>
-            </button>
-          ))}
+          
+          {activeRecords.length > 0 && (
+            <div className="service-group">
+              <div className="service-group-header">当前服务中 ({activeRecords.length})</div>
+              <div className="service-group-list">
+                {activeRecords.map((record) => (
+                  <button 
+                    key={record.id} 
+                    className={`service-item-btn ${record.id === selectedId ? 'active' : ''}`} 
+                    onClick={() => setSelectedId(record.id)}
+                  >
+                    <span className={`service-priority ${record.priority.toLowerCase()}`}>{record.priority}</span>
+                    <span><strong>{record.title}</strong><small>{customerById.get(record.customerId)?.name} · {statusLabels[record.status] || record.status}</small></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {archivedRecords.length > 0 && (
+            <div className="service-group archived">
+              <button 
+                type="button" 
+                className="service-group-header-btn" 
+                onClick={() => setArchiveExpanded(!archiveExpanded)}
+              >
+                <span>已归档服务 ({archivedRecords.length})</span>
+                <span className="chevron-icon">{archiveExpanded ? '▼' : '▶'}</span>
+              </button>
+              {archiveExpanded && (
+                <div className="service-group-list">
+                  {archivedRecords.map((record) => (
+                    <button 
+                      key={record.id} 
+                      className={`service-item-btn ${record.id === selectedId ? 'active' : ''}`} 
+                      onClick={() => setSelectedId(record.id)}
+                    >
+                      <span className={`service-priority ${record.priority.toLowerCase()}`}>{record.priority}</span>
+                      <span><strong>{record.title}</strong><small>{customerById.get(record.customerId)?.name} · {statusLabels[record.status] || record.status}</small></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {selected ? (
@@ -245,19 +355,34 @@ export default function CustomerServiceCenter() {
               evaluations={evaluations}
               participants={participants}
               busy={busy}
-              onSubmitTransition={(payload) => submit(() => transitionServiceRecord(selected.id, payload))}
+              currentUserId={data.currentUserId}
+              canManage={data.canManage}
+              onSubmitTransition={async (payload) => {
+                const success = await submit(() => transitionServiceRecord(selected.id, payload));
+                if (success) {
+                  if (payload.status === 'Pending Evaluation') {
+                    showToast?.('success', '交付成果已成功提交，等待客户确认/管理员评价 ✓');
+                  } else {
+                    showToast?.('success', '服务状态更新成功 ✓');
+                  }
+                }
+                return success;
+              }}
             />
 
-            <FeedbackPanel record={selected} feedback={feedback} busy={busy} onSubmit={(payload) => submit(() => addServiceFeedback(selected.id, payload))} />
-
-            {data.canManage && ['Completed', 'Pending Evaluation'].includes(selected.status) && feedback.length > 0 && (
-              <section className="service-evaluation-section">
-                <h3><Award size={17} /> 管理员服务评价</h3>
-                {participants.filter((item) => !evaluations.some((entry) => entry.participantId === item.id)).map((participant) => (
-                  <EvaluationForm key={participant.id} participant={participant} user={userById.get(participant.userId)} busy={busy} onSubmit={(payload) => submit(() => evaluateServiceParticipant(selected.id, participant.id, payload))} />
-                ))}
-              </section>
-            )}
+            <FeedbackPanel
+              record={selected}
+              feedback={feedback}
+              busy={busy}
+              canManage={data.canManage}
+              onSubmit={async (payload) => {
+                const success = await submit(() => addServiceFeedback(selected.id, payload));
+                if (success) {
+                  showToast?.('success', '客户反馈记录成功，系统已自动核算绩效积分并归档 ✓');
+                }
+                return success;
+              }}
+            />
           </div>
         ) : <div className="glass-panel service-empty">选择一条服务记录</div>}
       </section>
@@ -273,18 +398,16 @@ function Detail({ label, text }) {
   return <div className="service-detail-block"><strong>{label}</strong><p>{text}</p></div>;
 }
 
-function TransitionButton({ status, busy, onSubmit }) {
+function TransitionButton({ status, busy, onClickCompleted, onSubmit }) {
   const handle = () => {
-    if (status === 'Completed') {
-      const resultSummary = window.prompt('填写对客户可理解的服务结果摘要');
-      if (!resultSummary) return;
-      onSubmit({ status, resultSummary });
+    if (status === 'Pending Evaluation') {
+      onClickCompleted();
     } else onSubmit({ status });
   };
-  return <button className="cyber-btn" disabled={busy} onClick={handle}>{statusLabels[status] || status}</button>;
+  return <button className="cyber-btn" disabled={busy} onClick={handle}>{transitionLabels[status] || statusLabels[status] || status}</button>;
 }
 
-function FeedbackPanel({ record, feedback, busy, onSubmit }) {
+function FeedbackPanel({ record, feedback, busy, canManage, onSubmit }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -293,14 +416,20 @@ function FeedbackPanel({ record, feedback, busy, onSubmit }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (await onSubmit(Object.fromEntries(new FormData(event.currentTarget)))) {
-      event.currentTarget.reset();
+    const formEl = event.currentTarget;
+    if (await onSubmit(Object.fromEntries(new FormData(formEl)))) {
+      formEl.reset();
       setOpen(false);
     }
   };
   return (
     <section className="service-feedback-section">
-      <div className="service-section-title"><h3><MessageSquareText size={17} /> 客户反馈</h3><button className="cyber-btn" onClick={() => setOpen((value) => !value)}>记录反馈</button></div>
+      <div className="service-section-title">
+        <h3><MessageSquareText size={17} /> 客户反馈</h3>
+        {canManage && record.status === 'Pending Evaluation' && (
+          <button className="cyber-btn" onClick={() => setOpen((value) => !value)}>记录反馈</button>
+        )}
+      </div>
       {feedback.map((item) => <article key={item.id}><span className={`badge ${item.satisfactionLevel === 'Satisfied' ? 'green' : item.satisfactionLevel === 'Dissatisfied' ? 'red' : 'muted'}`}>{item.satisfactionLevel === 'Satisfied' ? '满意' : item.satisfactionLevel === 'Dissatisfied' ? '不满意' : '一般'}</span><p>{item.content}</p><small>{sourceTypeLabels[item.sourceType] || item.sourceType}{item.evidenceNote ? ` · ${item.evidenceNote}` : ''}</small></article>)}
       {open && <form className="service-inline-form" onSubmit={handleSubmit}>
         <select className="cyber-select" name="satisfactionLevel" defaultValue="" required>
@@ -322,30 +451,20 @@ function FeedbackPanel({ record, feedback, busy, onSubmit }) {
         <input className="cyber-input" name="evidenceNote" placeholder="证据位置或沟通记录说明" />
         <button className="cyber-btn success" disabled={busy}>保存反馈</button>
       </form>}
-      {record.status === 'Completed' && !feedback.length && <p className="service-muted">服务完成后需记录客户反馈，方可进入管理员评价。</p>}
+      {record.status === 'Pending Evaluation' && !feedback.length && <p className="service-muted">服务完成后管理员需在此记录客户反馈，系统将自动进行积分结算和服务归档。</p>}
     </section>
   );
 }
 
-function EvaluationForm({ participant, user, busy, onSubmit }) {
-  const [scores, setScores] = useState(defaultScores);
-  const total = Math.round(scores.outcomeScore * 0.6 + scores.professionalismScore * 0.4);
-  const labels = { outcomeScore: '服务结果与解决质量 (60%)', professionalismScore: '服务态度与专业沟通 (40%)' };
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await onSubmit({ ...scores, evaluationComment: form.get('evaluationComment'), improvementRequired: form.get('improvementRequired') });
-  };
-  return <form className="service-evaluation-form" onSubmit={handleSubmit}>
-    <header><span><strong>{user?.name}</strong><small>{participant.participantRole} · 贡献 {participant.contributionWeight}%</small></span><b>{total} 分</b></header>
-    <div className="service-score-grid">{Object.entries(labels).map(([key, label]) => <label key={key}><span>{label}<b>{scores[key]}</b></span><input type="range" min="0" max="100" step="1" value={scores[key]} onChange={(event) => setScores((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>)}</div>
-    <textarea className="cyber-input" name="evaluationComment" placeholder="评分依据（必填）" required />
-    <textarea className="cyber-input" name="improvementRequired" placeholder="改进要求（可选）" />
-    <button className="cyber-btn success" disabled={busy}>发布评价并结算积分</button>
-  </form>;
-}
+function ServiceTimeline({ record, feedback, evaluations, participants, busy, currentUserId, canManage, onSubmitTransition }) {
+  const [showResultForm, setShowResultForm] = useState(false);
+  const [resultSummary, setResultSummary] = useState('');
 
-function ServiceTimeline({ record, feedback, evaluations, participants, busy, onSubmitTransition }) {
+  useEffect(() => {
+    setShowResultForm(false);
+    setResultSummary('');
+  }, [record?.id]);
+
   const formatTime = (timeInput) => {
     if (!timeInput) return null;
     try {
@@ -363,14 +482,11 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, on
 
   const statusRanks = {
     New: 1,
-    Accepted: 2,
     'In Progress': 2,
-    'Waiting Customer': 2,
     Completed: 3,
     'Pending Evaluation': 4,
     Evaluated: 5,
     Reopened: 2,
-    Escalated: 2,
     Cancelled: 0,
   };
 
@@ -409,8 +525,8 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, on
       key: 'Evaluated',
       title: '5. 归档评价',
       desc: '主管评分与结算',
-      time: formatTime(evaluations[0]?.evaluatedAt || evaluations[0]?.createdAt),
-      status: record.status === 'Evaluated' || (evaluations.length > 0 && evaluations.length >= (participants?.length || 1)) ? 'done' : currentRank === 5 ? 'active' : 'pending',
+      time: record.status === 'Evaluated' && evaluations[0] ? formatTime(evaluations[0].evaluatedAt || evaluations[0].createdAt) : null,
+      status: record.status === 'Evaluated' ? 'done' : 'pending',
     },
   ];
 
@@ -422,14 +538,57 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, on
           <span>全流程服务节点流转时间线</span>
           <span className="badge cyan">当前阶段：{statusLabels[record.status] || record.status}</span>
         </div>
-        {!!nextActions[record.status]?.length && (
-          <div className="service-timeline-actions">
-            {nextActions[record.status].map((status) => (
-              <TransitionButton key={status} status={status} busy={busy} onSubmit={onSubmitTransition} />
-            ))}
-          </div>
-        )}
+        {!showResultForm && (() => {
+          const isParticipant = participants.some((p) => p.userId === currentUserId);
+          const canClick = (['New', 'In Progress', 'Reopened'].includes(record.status) && isParticipant) ||
+                           (record.status === 'Pending Evaluation' && canManage);
+          
+          if (canClick && nextActions[record.status]?.length) {
+            return (
+              <div className="service-timeline-actions">
+                {nextActions[record.status].map((status) => (
+                  <TransitionButton 
+                    key={status} 
+                    status={status} 
+                    busy={busy} 
+                    onClickCompleted={() => setShowResultForm(true)} 
+                    onSubmit={onSubmitTransition} 
+                  />
+                ))}
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
+
+      {showResultForm && (
+        <form className="service-result-inline-form" onSubmit={async (e) => {
+          e.preventDefault();
+          const success = await onSubmitTransition({ status: 'Pending Evaluation', resultSummary });
+          if (success) {
+            setShowResultForm(false);
+            setResultSummary('');
+          }
+        }}>
+          <div className="form-group">
+            <strong>服务交付结果总结</strong>
+            <span className="form-hint">请用客户可理解的语言，清晰、客观地概括本次服务最终交付的成果、解决的具体问题以及边界说明。</span>
+            <textarea 
+              className="cyber-input" 
+              value={resultSummary} 
+              onChange={(e) => setResultSummary(e.target.value)} 
+              placeholder="例如：已协助客户恢复数据库连接，并排查了主从同步延迟问题，目前系统各项指标运行正常。"
+              required
+              rows={3}
+            />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="cyber-btn" onClick={() => { setShowResultForm(false); setResultSummary(''); }}>取消</button>
+            <button type="submit" className="cyber-btn success" disabled={busy || resultSummary.trim().length < 6}>确认提交成果</button>
+          </div>
+        </form>
+      )}
 
       <div className="service-timeline-track">
         {steps.map((step, idx) => (

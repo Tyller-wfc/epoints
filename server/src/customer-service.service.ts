@@ -16,14 +16,10 @@ import { Mission } from './entities/mission.entity';
 import { ServiceMissionLink } from './entities/service-mission-link.entity';
 
 const TRANSITIONS: Record<string, string[]> = {
-  New: ['Accepted', 'Cancelled'],
-  Accepted: ['In Progress', 'Cancelled'],
-  'In Progress': ['Waiting Customer', 'Completed', 'Escalated'],
-  'Waiting Customer': ['In Progress', 'Completed'],
-  Completed: ['Pending Evaluation', 'Reopened'],
+  New: ['In Progress', 'Cancelled'],
+  'In Progress': ['Pending Evaluation', 'Cancelled'],
   'Pending Evaluation': ['Reopened'],
-  Reopened: ['In Progress', 'Escalated'],
-  Escalated: ['In Progress', 'Completed'],
+  Reopened: ['Pending Evaluation', 'Cancelled'],
 };
 
 export function calculateServiceScore(scores: number[]) {
@@ -63,11 +59,18 @@ export class CustomerServiceService {
   async getCenter(requesterId: string) {
     const requester = await this.requireUser(requesterId);
     const allParticipants = await this.participantRepo.find();
-    const visibleIds = requester.roleType === 'Admin'
-      ? null
-      : new Set(allParticipants.filter((item) => item.userId === requesterId).map((item) => item.serviceRecordId));
     const records = (await this.recordRepo.find({ order: { createdAt: 'DESC' } }))
-      .filter((item) => !visibleIds || visibleIds.has(item.id) || item.createdBy === requesterId);
+      .filter((item) => {
+        if (requester.roleType === 'Admin') return true;
+        const isParticipant = allParticipants.some((p) => p.serviceRecordId === item.id && p.userId === requesterId);
+        
+        if (['New', 'In Progress', 'Reopened'].includes(item.status)) {
+          return isParticipant;
+        }
+        
+        const isCreator = item.createdBy === requesterId;
+        return isParticipant || isCreator;
+      });
     const recordIds = records.map((item) => item.id);
     const participants = allParticipants.filter((item) => recordIds.includes(item.serviceRecordId));
     const participantIds = participants.map((item) => item.id);
@@ -83,6 +86,7 @@ export class CustomerServiceService {
     ]);
     const customerIds = new Set(records.map((item) => item.customerId));
     return {
+      currentUserId: requesterId,
       customers: customers.filter((item) => requester.roleType === 'Admin' || customerIds.has(item.id)).map((item) => ({
         id: item.id,
         name: item.name,
@@ -205,27 +209,37 @@ export class CustomerServiceService {
 
   async transitionRecord(requesterId: string, recordId: string, data: any) {
     const record = await this.requireRecord(recordId);
-    await this.assertCanWorkOn(requesterId, record);
     const nextStatus = String(data.status || '');
+    
+    if (['In Progress', 'Pending Evaluation'].includes(nextStatus)) {
+      const isParticipant = await this.participantRepo.exists({ where: { serviceRecordId: record.id, userId: requesterId } });
+      if (!isParticipant) throw new ForbiddenException('只允许指派的服务负责人操作此流转');
+    } else if (nextStatus === 'Reopened') {
+      await this.assertAdmin(requesterId);
+    } else {
+      await this.assertCanWorkOn(requesterId, record);
+    }
+    
     if (!(TRANSITIONS[record.status] || []).includes(nextStatus)) throw new BadRequestException(`不能从 ${record.status} 转为 ${nextStatus}`);
-    if (nextStatus === 'Completed' && !String(data.resultSummary || '').trim()) throw new BadRequestException('完成服务时必须填写结果摘要');
+    if (nextStatus === 'Pending Evaluation' && !String(data.resultSummary || '').trim()) throw new BadRequestException('完成服务时必须填写结果摘要');
+    
     record.status = nextStatus;
-    if (['Accepted', 'In Progress'].includes(nextStatus) && !record.startedAt) record.startedAt = new Date();
-    if (nextStatus === 'Completed') {
+    if (nextStatus === 'In Progress' && !record.startedAt) record.startedAt = new Date();
+    if (nextStatus === 'Pending Evaluation') {
       record.completedAt = new Date();
       record.resultSummary = String(data.resultSummary).trim();
     }
-    if (nextStatus === 'Pending Evaluation') record.customerConfirmedAt = new Date();
     await this.recordRepo.save(record);
     return this.getCenter(requesterId);
   }
 
   async addFeedback(requesterId: string, recordId: string, data: any) {
+    await this.assertAdmin(requesterId);
     const record = await this.requireRecord(recordId);
-    await this.assertCanWorkOn(requesterId, record);
     const content = String(data.content || '').trim();
     if (!content) throw new BadRequestException('反馈内容不能为空');
     const level = ['Satisfied', 'Neutral', 'Dissatisfied'].includes(data.satisfactionLevel) ? data.satisfactionLevel : 'Neutral';
+    
     await this.feedbackRepo.save(this.feedbackRepo.create({
       id: `sf-${randomUUID()}`,
       serviceRecordId: record.id,
@@ -235,12 +249,99 @@ export class CustomerServiceService {
       evidenceNote: String(data.evidenceNote || '').trim() || null,
       recordedBy: requesterId,
     }));
+    
     record.customerSatisfaction = level;
-    if (record.status === 'Completed') {
-      record.status = 'Pending Evaluation';
-      record.customerConfirmedAt = new Date();
+    record.customerConfirmedAt = new Date();
+    
+    let outcomeScore = 85;
+    let professionalismScore = 85;
+    if (level === 'Satisfied') {
+      outcomeScore = 95;
+      professionalismScore = 95;
+    } else if (level === 'Dissatisfied') {
+      outcomeScore = 55;
+      professionalismScore = 55;
     }
-    await this.recordRepo.save(record);
+    const totalScore = calculateServiceScore([outcomeScore, professionalismScore]);
+    
+    const recordParticipants = await this.participantRepo.find({ where: { serviceRecordId: record.id } });
+    const links = record.settlementMode === 'Mission Linked' ? await this.missionLinkRepo.find({ where: { serviceRecordId: record.id } }) : [];
+    
+    await this.dataSource.transaction(async (manager) => {
+      for (const participant of recordParticipants) {
+        const exists = await manager.exists(ServiceEvaluation, { where: { serviceRecordId: record.id, participantId: participant.id } });
+        if (exists) continue;
+        
+        const pointsAwarded = record.settlementMode === 'Standalone'
+          ? calculateServicePoints(record.basePoints, totalScore)
+          : 0;
+        
+        const evaluationId = `se-${randomUUID()}`;
+        
+        const evaluation = manager.create(ServiceEvaluation, {
+          id: evaluationId,
+          serviceRecordId: record.id,
+          participantId: participant.id,
+          evaluatorId: requesterId,
+          outcomeScore,
+          professionalismScore,
+          initiativeScore: professionalismScore,
+          warmthScore: professionalismScore,
+          fairnessScore: professionalismScore,
+          collaborationScore: professionalismScore,
+          totalScore,
+          pointsAwarded,
+          settlementType: record.settlementMode === 'Standalone' ? 'service_standalone' : 'mission_service_adjustment',
+          evaluationComment: `系统根据客户反馈自动评价: ${content}`,
+          improvementRequired: level === 'Dissatisfied' ? '需针对不满意反馈进行服务质量改进' : null,
+        });
+        await manager.save(ServiceEvaluation, evaluation);
+        
+        const settlements = record.settlementMode === 'Standalone'
+          ? [{ userId: participant.userId, targetType: 'user', targetId: participant.userId, sourceType: 'service_standalone', points: pointsAwarded, reason: `独立客户服务“${record.title}”自动评价 ${totalScore} 分` }]
+          : await Promise.all(links.map(async (link) => {
+            const mission = await manager.findOne(Mission, { where: { id: link.missionId } });
+            if (!mission || !mission.assigned_to) throw new BadRequestException('关联任务必须存在责任人');
+            const points = calculateMissionAdjustment(mission.base_points, totalScore);
+            return { userId: mission.assigned_to, targetType: 'mission', targetId: mission.id, sourceType: 'mission_service_adjustment', points, reason: `客户服务“${record.title}”自动评价 ${totalScore} 分对任务“${mission.title}”的服务调整` };
+          }));
+        
+        for (const settlement of settlements) {
+          await manager.save(PointLedger, manager.create(PointLedger, {
+            id: `pl-${randomUUID()}`,
+            userId: settlement.userId,
+            sourceType: settlement.sourceType,
+            sourceId: evaluationId,
+            targetType: settlement.targetType,
+            targetId: settlement.targetId,
+            pointsDelta: settlement.points,
+            reason: settlement.reason,
+            operatorId: requesterId,
+          }));
+          
+          const userToUpdate = await manager.findOne(User, { where: { id: settlement.userId } });
+          if (userToUpdate) {
+            userToUpdate.pointsBalance += settlement.points;
+            await manager.save(User, userToUpdate);
+          }
+        }
+      }
+      
+      record.status = 'Evaluated';
+      await manager.save(ServiceRecord, record);
+      
+      const participantNames = await Promise.all(recordParticipants.map(async p => {
+        const u = await manager.findOne(User, { where: { id: p.userId } });
+        return u ? u.name : '未知服务人员';
+      }));
+      await manager.save(Feed, manager.create(Feed, {
+        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'service',
+        message: `【服务自动结算】系统根据客户反馈自动评价完成。服务“${record.title}”归档。参与人员: ${participantNames.join(', ')}，得分 ${totalScore} 分。`,
+        timestamp: new Date(),
+      }));
+    });
+    
     return this.getCenter(requesterId);
   }
 
