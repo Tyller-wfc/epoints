@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
@@ -40,5 +40,22 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('登录用户不存在');
     await this.epointsService.setCurrentUser(user.id);
     return user;
+  }
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    if (!oldPassword || !newPassword) throw new BadRequestException('请填写旧密码和新密码');
+    if (newPassword.length < 6) throw new BadRequestException('新密码不能少于 6 位');
+    const credential = await this.credentialRepo
+      .createQueryBuilder('credential')
+      .addSelect('credential.passwordHash')
+      .where('credential.userId = :userId', { userId })
+      .getOne();
+    if (!credential) throw new UnauthorizedException('凭证不存在');
+    if (!(await bcrypt.compare(oldPassword, credential.passwordHash))) {
+      throw new BadRequestException('旧密码不正确');
+    }
+    credential.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.credentialRepo.save(credential);
+    return { message: '密码修改成功' };
   }
 }

@@ -29,7 +29,8 @@ import {
   deletePersonnel,
   updatePersonnelAvatar,
   resetPersonnelAvatar,
-  previewMissionRecipients
+  previewMissionRecipients,
+  changePassword
 } from './data/mockData';
 
 import Dashboard from './components/Dashboard';
@@ -42,13 +43,15 @@ import HeaderAvatarMenu from './components/HeaderAvatarMenu';
 import QuickClaimMission from './components/QuickClaimMission';
 import CustomerServiceCenter from './components/CustomerServiceCenter';
 
-import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut, HeartHandshake } from 'lucide-react';
+import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut, HeartHandshake, CheckCircle2, XCircle } from 'lucide-react';
 
 function App() {
   const [state, setState] = useState(null);
   const [sessionStatus, setSessionStatus] = useState('loading');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [quickClaimMissionId] = useState(() => new URLSearchParams(window.location.search).get('claimMission'));
+  const [toast, setToast] = useState(null); // { type, text, leaving }
+  const toastTimer = React.useRef(null);
   const [quickClaimStatus, setQuickClaimStatus] = useState(null);
 
   useEffect(() => {
@@ -228,6 +231,23 @@ function App() {
     return nextState;
   };
 
+  const TOAST_DURATION = 3200; // ms 显示时长
+  const TOAST_LEAVE = 300;    // ms 离场动画时长
+
+  const showToast = (type, text) => {
+    clearTimeout(toastTimer.current);
+    setToast({ type, text, leaving: false });
+    toastTimer.current = setTimeout(() => {
+      setToast((prev) => prev ? { ...prev, leaving: true } : null);
+      setTimeout(() => setToast(null), TOAST_LEAVE);
+    }, TOAST_DURATION);
+  };
+
+  const handleChangePassword = async (oldPassword, newPassword) => {
+    await changePassword(oldPassword, newPassword);
+    showToast('success', '密码修改成功，下次登录请使用新密码 ✓');
+  };
+
   return (
     <div className={`app-container ${hasCriticalAlert ? 'sos-active' : ''}`} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', transition: 'all 0.5s ease' }}>
       
@@ -378,7 +398,7 @@ function App() {
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>当前登录</div>
             <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{currentUser.name}</div>
           </div>
-          <HeaderAvatarMenu user={currentUser} onUpload={handleUpdatePersonnelAvatar} onReset={handleResetPersonnelAvatar} />
+          <HeaderAvatarMenu user={currentUser} onUpload={handleUpdatePersonnelAvatar} onReset={handleResetPersonnelAvatar} onChangePassword={handleChangePassword} />
           <button className="header-icon-btn" onClick={handleLogout} title="退出登录"><LogOut size={17} /></button>
         </div>
 
@@ -447,6 +467,20 @@ function App() {
         <div>ePoints 敏捷效能协同系统 - 数字化团队与任务智能化激励平台</div>
         <div style={{ marginTop: '4px', fontFamily: 'monospace' }}>ALL SYSTEMS OPERATIONAL // INTEGRITY GREEN // PLATFORM SYNC ACTIVE</div>
       </footer>
+
+      {/* 全局 Toast 通知 */}
+      {toast && (
+        <div className={`global-toast ${toast.type} ${toast.leaving ? 'leaving' : ''}`}>
+          <span className="global-toast-icon">
+            {toast.type === 'success' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+          </span>
+          <span>{toast.text}</span>
+          <span
+            className="global-toast-bar"
+            style={{ animationDuration: `${TOAST_DURATION}ms` }}
+          />
+        </div>
+      )}
 
     </div>
   );

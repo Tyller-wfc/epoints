@@ -14,4 +14,13 @@ export class AuthController {
   profile(@Req() request: any) {
     return this.authService.profile(request.user.sub);
   }
+
+  @Post('change-password')
+  changePassword(
+    @Req() request: any,
+    @Body('oldPassword') oldPassword: string,
+    @Body('newPassword') newPassword: string,
+  ) {
+    return this.authService.changePassword(request.user.sub, oldPassword, newPassword);
+  }
 }

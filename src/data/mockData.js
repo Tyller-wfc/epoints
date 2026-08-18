@@ -82,6 +82,10 @@ export const restoreSession = async () => {
 
 export const logout = () => localStorage.removeItem(TOKEN_KEY);
 
+export const changePassword = async (oldPassword, newPassword) => {
+  return postJson('/auth/change-password', { oldPassword, newPassword });
+};
+
 export const getAppState = async () => {
   const res = await fetch(`${API_BASE}/state`, { headers: authHeaders() });
   return parseResponse(res);
