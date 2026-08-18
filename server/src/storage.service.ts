@@ -10,13 +10,38 @@ const ALLOWED_EXTENSIONS = new Set([
   '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.log', '.json', '.zip', '.7z',
 ]);
 
+/** 扩展名 → 规范 MIME 类型（头像 & 商品图片共用） */
 const AVATAR_MIME_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg',
+  '.jpg':  'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
+  '.png':  'image/png',
   '.webp': 'image/webp',
-  '.gif': 'image/gif',
+  '.gif':  'image/gif',
+  '.bmp':  'image/bmp',
+  '.tif':  'image/tiff',
+  '.tiff': 'image/tiff',
+  '.avif': 'image/avif',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.svg':  'image/svg+xml',
 };
+
+/** 浏览器 / 系统上报的非标准 MIME 别名 → 规范值 */
+const MIME_ALIASES: Record<string, string> = {
+  'image/jpg':            'image/jpeg',
+  'image/pjpeg':          'image/jpeg',  // IE/旧版 Chrome
+  'image/x-png':          'image/png',
+  'image/x-bmp':          'image/bmp',
+  'image/x-ms-bmp':       'image/bmp',
+  'image/x-tiff':         'image/tiff',
+  'image/x-tif':          'image/tiff',
+  'image/heif':           'image/heif',
+  'image/heic-sequence':  'image/heic',
+  'image/heif-sequence':  'image/heif',
+};
+
+const IMAGE_FORMAT_LABEL = 'JPG、PNG、WebP、GIF、BMP、TIFF、AVIF、HEIC 或 SVG';
+
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -80,10 +105,16 @@ export class StorageService implements OnModuleInit {
     const originalName = this.normalizeOriginalName(file.originalname);
     const extension = extname(originalName).toLowerCase();
     const expectedMimeType = AVATAR_MIME_TYPES[extension];
-    if (!expectedMimeType || file.mimetype !== expectedMimeType) throw new BadRequestException('头像仅支持 JPG、PNG、WebP 或 GIF 图片');
+    // 归一化浏览器 / 系统上报的非标准 MIME 别名
+    const normalizedMimeType = MIME_ALIASES[file.mimetype] ?? file.mimetype;
+    if (!expectedMimeType || normalizedMimeType !== expectedMimeType) {
+      throw new BadRequestException(`头像仅支持 ${IMAGE_FORMAT_LABEL} 格式`);
+    }
     if (!file.size) throw new BadRequestException('头像文件不能为空');
     if (file.size > 5 * 1024 * 1024) throw new BadRequestException('头像文件不能超过 5 MB');
-    if (!this.hasValidImageSignature(file.buffer, expectedMimeType)) throw new BadRequestException('头像文件内容与图片格式不匹配');
+    if (!this.hasValidImageSignature(file.buffer, expectedMimeType)) {
+      throw new BadRequestException('头像文件内容与扩展名不匹配，请确认文件未被篡改');
+    }
     const now = new Date();
     const objectKey = `avatars/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${userId}/${randomUUID()}${extension}`;
     await this.client.putObject(this.bucket, objectKey, file.buffer, file.size, {
@@ -97,7 +128,10 @@ export class StorageService implements OnModuleInit {
     const originalName = this.normalizeOriginalName(file.originalname);
     const extension = extname(originalName).toLowerCase();
     const expectedMimeType = AVATAR_MIME_TYPES[extension];
-    if (!expectedMimeType || file.mimetype !== expectedMimeType) throw new BadRequestException('商品图片仅支持 JPG、PNG、WebP 或 GIF');
+    const normalizedMimeType = MIME_ALIASES[file.mimetype] ?? file.mimetype;
+    if (!expectedMimeType || normalizedMimeType !== expectedMimeType) {
+      throw new BadRequestException(`商品图片仅支持 ${IMAGE_FORMAT_LABEL} 格式`);
+    }
     if (!file.size) throw new BadRequestException('商品图片不能为空');
     if (file.size > 5 * 1024 * 1024) throw new BadRequestException('商品图片不能超过 5 MB');
     if (!this.hasValidImageSignature(file.buffer, expectedMimeType)) throw new BadRequestException('商品图片内容与文件格式不匹配');
@@ -134,12 +168,57 @@ export class StorageService implements OnModuleInit {
     }
   }
 
-  private hasValidImageSignature(buffer: Buffer, mimeType: string) {
-    if (mimeType === 'image/jpeg') return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-    if (mimeType === 'image/png') return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-    if (mimeType === 'image/gif') return buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'));
-    if (mimeType === 'image/webp') return buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP';
-    return false;
+  private hasValidImageSignature(buffer: Buffer, mimeType: string): boolean {
+    if (buffer.length < 4) return false;
+
+    switch (mimeType) {
+      case 'image/jpeg':
+        // JPEG 所有变体均以 FF D8 FF 开头（JFIF/Exif/SPIFF/Raw 均满足）
+        return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+
+      case 'image/png':
+        return buffer.length >= 8 &&
+          buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+
+      case 'image/gif':
+        return buffer.length >= 6 &&
+          (buffer.subarray(0, 6).toString('ascii') === 'GIF87a' ||
+           buffer.subarray(0, 6).toString('ascii') === 'GIF89a');
+
+      case 'image/webp':
+        return buffer.length >= 12 &&
+          buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+          buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+
+      case 'image/bmp':
+        // BMP: 'BM'
+        return buffer[0] === 0x42 && buffer[1] === 0x4d;
+
+      case 'image/tiff':
+        // TIFF 小端：49 49 2A 00；大端：4D 4D 00 2A
+        return (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) ||
+               (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a);
+
+      case 'image/avif':
+      case 'image/heic':
+      case 'image/heif':
+        // HEIC/HEIF/AVIF 都是 ISO Base Media File Format (ISOBMFF) 容器
+        // 偏移 4 开始是 'ftyp' box，后跟品牌标识
+        if (buffer.length < 12) return false;
+        if (buffer.subarray(4, 8).toString('ascii') !== 'ftyp') return false;
+        // 接受常见品牌：heic, heix, hevc, hevx, mif1, msf1, avif, avis
+        const brand = buffer.subarray(8, 12).toString('ascii').toLowerCase();
+        return ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'avif', 'avis'].some(b => brand.startsWith(b));
+
+      case 'image/svg+xml':
+        // SVG 是文本格式，检查是否以 '<' 或 UTF-8 BOM 开头，并包含 svg 标签
+        const text = buffer.subarray(0, Math.min(512, buffer.length)).toString('utf8').trimStart();
+        return text.startsWith('<') && /<svg[\s>]/i.test(text);
+
+      default:
+        // 未知格式：放行（后续可按需收紧）
+        return true;
+    }
   }
 
   private normalizeOriginalName(name: string) {

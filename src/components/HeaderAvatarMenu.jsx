@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Check, Eye, EyeOff, KeyRound, Lock, RotateCcw, Upload, X } from 'lucide-react';
 
-const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const allowedTypes = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
+  'image/bmp', 'image/tiff', 'image/avif', 'image/heic', 'image/heif',
+  'image/svg+xml',
+];
+
 
 /* ──────────── 密码强度计算 ──────────── */
 function pwdStrength(pwd) {
@@ -61,7 +66,8 @@ export default function HeaderAvatarMenu({ user, onUpload, onReset, onChangePass
   // ── 头像操作 ──
   const selectFile = (nextFile) => {
     if (!nextFile) return;
-    if (!allowedTypes.includes(nextFile.type)) return setAvatarStatus({ type: 'error', text: '仅支持 JPG、PNG、WebP 或 GIF' });
+    if (!allowedTypes.includes(nextFile.type)) return setAvatarStatus({ type: 'error', text: '仅支持 JPG、PNG、WebP、GIF、BMP、TIFF、AVIF、HEIC 或 SVG' });
+
     if (nextFile.size > 5 * 1024 * 1024) return setAvatarStatus({ type: 'error', text: '头像不能超过 5 MB' });
     setFile(nextFile);
     setPreview(URL.createObjectURL(nextFile));
@@ -160,10 +166,12 @@ export default function HeaderAvatarMenu({ user, onUpload, onReset, onChangePass
                 <span><Camera size={17} /></span>
               </button>
               <input ref={inputRef} type="file" hidden accept={allowedTypes.join(',')} onChange={(e) => { selectFile(e.target.files?.[0]); e.target.value = ''; }} />
+
               {file && (
                 <div className="header-avatar-file"><Check size={14} /><span title={file.name}>{file.name}</span></div>
               )}
-              <small className="header-avatar-hint">JPG / PNG / WebP / GIF · 最大 5 MB</small>
+              <small className="header-avatar-hint">JPG / PNG / WebP / GIF / BMP / TIFF / AVIF / HEIC · 最大 5 MB</small>
+
               {avatarStatus && <div className={`header-avatar-status ${avatarStatus.type}`}>{avatarStatus.text}</div>}
               <div className="header-avatar-actions">
                 {user.avatar.includes('/api/personnel/') && (
