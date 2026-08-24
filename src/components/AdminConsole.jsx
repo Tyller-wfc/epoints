@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, Check, X, SlidersHorizontal, ShoppingCart, UserCheck, Send, Save, Power, CalendarDays, Trash2, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Check, X, SlidersHorizontal, ShoppingCart, UserCheck, Send, Save, Power, CalendarDays, Trash2, Clock, ChevronLeft, ChevronRight, AlertTriangle, Calendar as CalendarIcon } from 'lucide-react';
 import AttachmentPicker from './AttachmentPicker';
 import PersonnelManager from './PersonnelManager';
+import { getHolidayInfo } from '../utils/holidays';
 
 // ─── 排班管理子组件 ────────────────────────────────────────────────────────────
 function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDuty }) {
@@ -10,13 +11,22 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
 
   // 新增排班表单状态
   const [formUserId, setFormUserId] = useState(users[0]?.id || '');
-  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // 多选日期状态（支持多个日期）
+  const [selectedDates, setSelectedDates] = useState(() => [new Date().toISOString().slice(0, 10)]);
   const [formShiftPreset, setFormShiftPreset] = useState('全天');
   const [formStart, setFormStart] = useState('00:00');
   const [formEnd, setFormEnd] = useState('24:00');
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+
+  // 日历视图当前月份
+  const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
+  // 是否展示日历选择面板
+  const [showCalendarGrid, setShowCalendarGrid] = useState(true);
+
+  // 冲突协商弹窗状态
+  const [conflictModalData, setConflictModalData] = useState(null);
 
   const SHIFT_PRESETS = {
     '全天':   { start: '00:00', end: '24:00' },
@@ -31,6 +41,79 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
     if (SHIFT_PRESETS[preset]) {
       setFormStart(SHIFT_PRESETS[preset].start);
       setFormEnd(SHIFT_PRESETS[preset].end);
+    }
+  };
+
+  // 切换单个日期的选中状态
+  const toggleDate = (dateStr) => {
+    setSelectedDates(prev => {
+      if (prev.includes(dateStr)) {
+        return prev.filter(d => d !== dateStr);
+      } else {
+        return [...prev, dateStr].sort();
+      }
+    });
+  };
+
+  // 快捷选择日期集合
+  const applyQuickPreset = (preset) => {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    
+    if (preset === 'today') {
+      setSelectedDates([todayStr]);
+      return;
+    }
+    if (preset === 'tomorrow') {
+      const tmr = new Date(today);
+      tmr.setDate(today.getDate() + 1);
+      setSelectedDates([tmr.toISOString().slice(0, 10)]);
+      return;
+    }
+    
+    const dayOfWeek = today.getDay() === 0 ? 7 : today.getDay(); // 1=周一
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dayOfWeek + 1);
+    
+    if (preset === 'thisWeekWorkdays') {
+      const dates = [0, 1, 2, 3, 4].map(i => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      setSelectedDates(dates);
+      return;
+    }
+    if (preset === 'thisWeekWeekend') {
+      const dates = [5, 6].map(i => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      setSelectedDates(dates);
+      return;
+    }
+    if (preset === 'thisWeekAll') {
+      const dates = [0, 1, 2, 3, 4, 5, 6].map(i => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      setSelectedDates(dates);
+      return;
+    }
+    if (preset === 'nextWeekAll') {
+      const dates = [7, 8, 9, 10, 11, 12, 13].map(i => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return d.toISOString().slice(0, 10);
+      });
+      setSelectedDates(dates);
+      return;
+    }
+    if (preset === 'clear') {
+      setSelectedDates([]);
+      return;
     }
   };
 
@@ -71,14 +154,150 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
   // 无日期的旧记录
   const legacyDuty = dutyByDate['__legacy__'] || [];
 
+  // 日历网格数据计算
+  const calendarYear = calendarViewDate.getFullYear();
+  const calendarMonth = calendarViewDate.getMonth(); // 0-11
+
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(calendarYear, calendarMonth, 1);
+    const dayOfWeek = firstDay.getDay() === 0 ? 7 : firstDay.getDay(); // 1=周一
+    const blanksCount = dayOfWeek - 1;
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+    const blanks = Array.from({ length: blanksCount }, () => null);
+    const days = Array.from({ length: daysInMonth }, (_, i) => {
+      const mStr = String(calendarMonth + 1).padStart(2, '0');
+      const dStr = String(i + 1).padStart(2, '0');
+      return `${calendarYear}-${mStr}-${dStr}`;
+    });
+    return [...blanks, ...days];
+  }, [calendarYear, calendarMonth]);
+
+  // 时段区间转换
+  const parseDutyRange = (dutyDate, shiftStart, shiftEnd) => {
+    if (!dutyDate || !shiftStart || !shiftEnd) return null;
+    const baseDate = new Date(`${dutyDate}T00:00:00+08:00`);
+    if (isNaN(baseDate.getTime())) return null;
+    const [sh, sm] = shiftStart.split(':').map(Number);
+    const [eh, em] = shiftEnd.split(':').map(Number);
+    if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return null;
+
+    const start = baseDate.getTime() + (sh * 60 + sm) * 60 * 1000;
+    let end;
+    if (shiftEnd === '24:00' || (eh === 24 && em === 0)) {
+      end = baseDate.getTime() + 24 * 60 * 60 * 1000;
+    } else if (eh < sh || (eh === sh && em <= sm)) {
+      end = baseDate.getTime() + (24 * 60 + eh * 60 + em) * 60 * 1000;
+    } else {
+      end = baseDate.getTime() + (eh * 60 + em) * 60 * 1000;
+    }
+    return { start, end };
+  };
+
+  const doDutiesOverlap = (d1, d2) => {
+    if (!d1.duty_date || !d2.duty_date) return false;
+    const r1 = parseDutyRange(d1.duty_date, d1.shift_start, d1.shift_end);
+    const r2 = parseDutyRange(d2.duty_date, d2.shift_start, d2.shift_end);
+    if (!r1 || !r2) return false;
+    return r1.start < r2.end && r2.start < r1.end;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setFormSubmitting(true);
+    if (selectedDates.length === 0) {
+      setFormError('请至少选择一个排班日期');
+      return;
+    }
     setFormError('');
+
+    // 检测所选日期和时段与现有排班是否存在冲突
+    const conflicts = [];
+    const nonConflictDates = [];
+
+    for (const dateStr of selectedDates) {
+      const candidate = { duty_date: dateStr, shift_start: formStart, shift_end: formEnd };
+      const overlapping = duty.filter(d => d.duty_date && doDutiesOverlap(candidate, d));
+      if (overlapping.length > 0) {
+        conflicts.push({
+          date: dateStr,
+          shiftStart: formStart,
+          shiftEnd: formEnd,
+          conflictingDuties: overlapping,
+        });
+      } else {
+        nonConflictDates.push(dateStr);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      // 存在冲突，弹出冲突协商对话框
+      const initialDecisions = {};
+      for (const c of conflicts) {
+        initialDecisions[c.date] = 'replace'; // 默认替换
+      }
+      setConflictModalData({
+        conflicts,
+        nonConflictDates,
+        decisions: initialDecisions,
+      });
+      return;
+    }
+
+    // 无冲突，直接提交
+    setFormSubmitting(true);
     try {
-      await onCreateDuty({ userId: formUserId, dutyDate: formDate, shiftStart: formStart, shiftEnd: formEnd });
+      await onCreateDuty({
+        userId: formUserId,
+        dutyDate: selectedDates[0],
+        dutyDates: selectedDates,
+        shiftStart: formStart,
+        shiftEnd: formEnd,
+      });
+      setFormError('');
     } catch (err) {
       setFormError(err.message || '添加排班失败');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleConfirmConflictResolution = async () => {
+    if (!conflictModalData) return;
+    const { conflicts, nonConflictDates, decisions } = conflictModalData;
+
+    const replaceDutyIds = [];
+    const datesToSchedule = [...nonConflictDates];
+
+    for (const c of conflicts) {
+      const action = decisions[c.date];
+      if (action === 'replace') {
+        datesToSchedule.push(c.date);
+        for (const d of c.conflictingDuties) {
+          replaceDutyIds.push(d.id);
+        }
+      }
+    }
+
+    if (datesToSchedule.length === 0) {
+      alert('所有冲突时段均选择了保留原人员，且无新增无冲突日期，未做任何排班修改。');
+      setConflictModalData(null);
+      return;
+    }
+
+    setFormSubmitting(true);
+    try {
+      await onCreateDuty({
+        userId: formUserId,
+        dutyDate: datesToSchedule[0],
+        dutyDates: datesToSchedule,
+        shiftStart: formStart,
+        shiftEnd: formEnd,
+        replaceDutyIds,
+      });
+      setConflictModalData(null);
+      setFormError('');
+    } catch (err) {
+      alert(err.message || '提交排班失败');
     } finally {
       setFormSubmitting(false);
     }
@@ -96,6 +315,7 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
   };
 
   const today = new Date().toISOString().slice(0, 10);
+  const selectedUser = users.find(u => u.id === formUserId) || { name: '未知人员' };
 
   return (
     <div className="glass-panel" style={{ padding: '24px' }}>
@@ -106,10 +326,15 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
 
       {/* ── 新增排班表单 ── */}
       <form onSubmit={handleSubmit} style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-cyan)', borderRadius: '6px', padding: '16px', marginBottom: '20px' }}>
-        <div style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '0.5px' }}>
-          ＋ 新增排班记录
+        <div style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>＋ 新增排班记录（支持多选日期 & 冲突协商）</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+            已选 <strong style={{ color: 'var(--accent-cyan)' }}>{selectedDates.length}</strong> 天
+          </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+
+        {/* 表单基本项 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '14px' }}>
           {/* 人员 */}
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>值班人员</label>
@@ -120,22 +345,9 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
             </select>
           </div>
 
-          {/* 日期 */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>排班日期</label>
-            <input
-              type="date"
-              className="cyber-input"
-              value={formDate}
-              onChange={e => setFormDate(e.target.value)}
-              required
-              style={{ fontSize: '0.82rem', width: '100%' }}
-            />
-          </div>
-
           {/* 班次预设 */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>班次</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>班次预设</label>
             <select className="cyber-select" value={formShiftPreset} onChange={e => handlePresetChange(e.target.value)} style={{ fontSize: '0.82rem', width: '100%' }}>
               {Object.keys(SHIFT_PRESETS).map(p => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -157,8 +369,206 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
         </div>
 
         {formShiftPreset !== '自定义' && (
-          <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <Clock size={12} /> 时段：{formStart} – {formEnd}
+          <div style={{ marginBottom: '14px', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Clock size={12} /> 时段设定：<strong style={{ color: 'var(--text-bright)' }}>{formStart} – {formEnd}</strong>
+          </div>
+        )}
+
+        {/* ── 日期快捷多选栏 ── */}
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>排班日期多选与快捷设定</label>
+            <button
+              type="button"
+              className="cyber-btn"
+              onClick={() => setShowCalendarGrid(v => !v)}
+              style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+            >
+              <CalendarIcon size={12} /> {showCalendarGrid ? '收起日历选择' : '展开日历选择'}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('today')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>今天</button>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('tomorrow')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>明天</button>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('thisWeekWorkdays')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>本周工作日 (5天)</button>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('thisWeekWeekend')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>本周末 (2天)</button>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('thisWeekAll')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>本周整周 (7天)</button>
+            <button type="button" className="cyber-btn" onClick={() => applyQuickPreset('nextWeekAll')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>下周整周 (7天)</button>
+            {selectedDates.length > 0 && (
+              <button type="button" className="cyber-btn danger" onClick={() => applyQuickPreset('clear')} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>清空所选</button>
+            )}
+          </div>
+        </div>
+
+        {/* ── 内嵌交互式日历多选面板（含节假日展示） ── */}
+        {showCalendarGrid && (
+          <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-muted)', borderRadius: '6px', padding: '12px', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CalendarIcon size={14} style={{ color: 'var(--accent-cyan)' }} />
+                {calendarYear} 年 {calendarMonth + 1} 月
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>（点击日期切换选中状态）</span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="cyber-btn"
+                  onClick={() => setCalendarViewDate(new Date(calendarYear, calendarMonth - 1, 1))}
+                  style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                >
+                  <ChevronLeft size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="cyber-btn"
+                  onClick={() => setCalendarViewDate(new Date())}
+                  style={{ padding: '2px 8px', fontSize: '0.68rem' }}
+                >
+                  本月
+                </button>
+                <button
+                  type="button"
+                  className="cyber-btn"
+                  onClick={() => setCalendarViewDate(new Date(calendarYear, calendarMonth + 1, 1))}
+                  style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                >
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            </div>
+
+            {/* 星期表头 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
+              {['一', '二', '三', '四', '五', '六', '日'].map((w, i) => (
+                <div key={w} style={{ fontSize: '0.68rem', color: i >= 5 ? 'var(--accent-orange)' : 'var(--text-muted)', fontWeight: 'bold' }}>
+                  {w}
+                </div>
+              ))}
+            </div>
+
+            {/* 月份日期格子 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+              {calendarDays.map((dateStr, idx) => {
+                if (!dateStr) {
+                  return <div key={`blank-${idx}`} style={{ minHeight: '44px', opacity: 0 }} />;
+                }
+                const isSelected = selectedDates.includes(dateStr);
+                const isToday = dateStr === today;
+                const holiday = getHolidayInfo(dateStr);
+                const dayDuties = dutyByDate[dateStr] || [];
+                const dayNum = parseInt(dateStr.slice(8), 10);
+
+                let badgeBg = 'transparent';
+                let badgeColor = 'var(--text-muted)';
+                let badgeText = holiday.badgeText;
+                if (holiday.badgeType === 'holiday') {
+                  badgeBg = 'rgba(255, 75, 75, 0.25)';
+                  badgeColor = '#ff6b6b';
+                } else if (holiday.badgeType === 'workday') {
+                  badgeBg = 'rgba(255, 165, 0, 0.25)';
+                  badgeColor = '#ffa500';
+                } else if (holiday.badgeType === 'festival') {
+                  badgeBg = 'rgba(0, 212, 255, 0.15)';
+                  badgeColor = 'var(--accent-cyan)';
+                }
+
+                return (
+                  <button
+                    type="button"
+                    key={dateStr}
+                    onClick={() => toggleDate(dateStr)}
+                    style={{
+                      background: isSelected ? 'rgba(0, 212, 255, 0.18)' : (isToday ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0,0,0,0.2)'),
+                      border: `1px solid ${isSelected ? 'var(--accent-cyan)' : (isToday ? 'rgba(255,255,255,0.25)' : 'var(--border-muted)')}`,
+                      borderRadius: '4px',
+                      padding: '4px 2px',
+                      minHeight: '46px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      boxShadow: isSelected ? '0 0 6px var(--accent-cyan-glow)' : 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {/* 顶部：日期号 + 节假日标 */}
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: isToday || isSelected ? 'bold' : 'normal', color: isSelected ? 'var(--accent-cyan)' : (isToday ? 'var(--text-bright)' : 'var(--text-primary)') }}>
+                        {dayNum}
+                      </span>
+                      {badgeText && (
+                        <span style={{ fontSize: '0.58rem', padding: '0 2px', borderRadius: '2px', background: badgeBg, color: badgeColor, fontWeight: 'bold', lineHeight: 1.2 }}>
+                          {badgeText}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 中部：节日名称或已有排班人员提示 */}
+                    <div style={{ width: '100%', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', padding: '0 2px' }}>
+                      {holiday.holidayName && holiday.holidayName !== '周末' ? (
+                        <span style={{ fontSize: '0.58rem', color: badgeColor }}>{holiday.holidayName}</span>
+                      ) : dayDuties.length > 0 ? (
+                        <span style={{ fontSize: '0.58rem', color: dayDuties.some(d => d.is_active) ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                          {dayDuties.length === 1 ? (users.find(u => u.id === dayDuties[0].user_id)?.name || '已有排班') : `${dayDuties.length}人值班`}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* 底部选中标记点 */}
+                    {isSelected && (
+                      <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'var(--accent-cyan)', marginTop: '2px' }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── 已选日期标签清单 ── */}
+        {selectedDates.length > 0 && (
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '6px' }}>已选日期列表（点击 × 可移除）：</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto' }}>
+              {selectedDates.map(d => {
+                const info = getHolidayInfo(d);
+                return (
+                  <span
+                    key={d}
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '2px 8px',
+                      background: 'rgba(0, 212, 255, 0.1)',
+                      border: '1px solid var(--border-cyan)',
+                      borderRadius: '12px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: 'var(--text-bright)',
+                    }}
+                  >
+                    📅 {d}（{info.weekdayName}）
+                    {info.holidayName && info.holidayName !== '周末' && (
+                      <span style={{ color: 'var(--accent-cyan)', fontSize: '0.65rem' }}>{info.holidayName}</span>
+                    )}
+                    {info.badgeText && info.badgeType !== 'weekend' && (
+                      <span style={{ fontSize: '0.6rem', color: info.badgeType === 'workday' ? '#ffa500' : '#ff6b6b', fontWeight: 'bold' }}>[{info.badgeText}]</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleDate(d)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', padding: 0 }}
+                      title="移除此日期"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -166,14 +576,206 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
 
         <button
           type="submit"
-          disabled={formSubmitting}
+          disabled={formSubmitting || selectedDates.length === 0}
           className="cyber-btn success"
-          style={{ marginTop: '12px', padding: '7px 18px', fontSize: '0.8rem' }}
+          style={{ marginTop: '6px', padding: '8px 20px', fontSize: '0.82rem' }}
         >
           <PlusCircle size={14} />
-          {formSubmitting ? '提交中...' : '确认添加排班'}
+          {formSubmitting ? '正在提交排班...' : `确认添加排班（为 ${selectedUser.name} 排 ${selectedDates.length} 天）`}
         </button>
       </form>
+
+      {/* ── 冲突协商解决弹窗 (Conflict Resolution Modal) ── */}
+      {conflictModalData && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: 'min(100%, 640px)',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '24px',
+              border: '1px solid var(--accent-orange)',
+              boxShadow: '0 0 24px rgba(255, 165, 0, 0.25)',
+              borderRadius: '8px',
+            }}
+          >
+            {/* 弹窗头部 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-muted)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-orange)', fontWeight: 'bold', fontSize: '1rem' }}>
+                <AlertTriangle size={20} />
+                排班时段冲突协商处理
+              </div>
+              <button
+                type="button"
+                onClick={() => setConflictModalData(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 规则说明与批量操作 */}
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
+              ⚡ 规则校验：<strong>同一个时间段内，只允许保留一个值班人员</strong>。<br />
+              系统检测到以下 <strong style={{ color: 'var(--accent-orange)' }}>{conflictModalData.conflicts.length}</strong> 处日期时段已存在排班人员，请选择每个冲突时段所保留的人员：
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <button
+                type="button"
+                className="cyber-btn"
+                onClick={() => {
+                  const nextDecisions = {};
+                  conflictModalData.conflicts.forEach(c => { nextDecisions[c.date] = 'replace'; });
+                  setConflictModalData(prev => ({ ...prev, decisions: nextDecisions }));
+                }}
+                style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+              >
+                全部设为：替换为新人员 ({selectedUser.name})
+              </button>
+              <button
+                type="button"
+                className="cyber-btn"
+                onClick={() => {
+                  const nextDecisions = {};
+                  conflictModalData.conflicts.forEach(c => { nextDecisions[c.date] = 'keep'; });
+                  setConflictModalData(prev => ({ ...prev, decisions: nextDecisions }));
+                }}
+                style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+              >
+                全部设为：保留原值班人员
+              </button>
+            </div>
+
+            {/* 冲突项目列表 */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px', marginBottom: '16px' }}>
+              {conflictModalData.conflicts.map(c => {
+                const info = getHolidayInfo(c.date);
+                const currentAction = conflictModalData.decisions[c.date] || 'replace';
+
+                return (
+                  <div
+                    key={c.date}
+                    style={{
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid var(--border-muted)',
+                      borderRadius: '6px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>
+                        📅 {c.date}（{info.weekdayName}）
+                        {info.holidayName && <span style={{ color: 'var(--accent-cyan)', fontSize: '0.72rem', marginLeft: '6px' }}>{info.holidayName}</span>}
+                        {info.badgeText && <span style={{ fontSize: '0.65rem', marginLeft: '4px', color: info.badgeType === 'workday' ? '#ffa500' : '#ff6b6b' }}>[{info.badgeText}]</span>}
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--accent-orange)' }}>
+                        时段：{c.shiftStart}–{c.shiftEnd}
+                      </span>
+                    </div>
+
+                    {/* 现有排班人员 */}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>现有值班：</span>
+                      {c.conflictingDuties.map(d => {
+                        const u = users.find(user => user.id === d.user_id) || { name: '未知人员' };
+                        return (
+                          <span key={d.id} style={{ color: 'var(--text-primary)', fontWeight: 'bold', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: '3px' }}>
+                            {u.name} ({d.shift_start}–{d.shift_end})
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {/* 选择人员 Radio */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '4px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: currentAction === 'replace' ? 'var(--accent-green)' : 'var(--text-secondary)', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`conflict-${c.date}`}
+                          checked={currentAction === 'replace'}
+                          onChange={() => {
+                            setConflictModalData(prev => ({
+                              ...prev,
+                              decisions: { ...prev.decisions, [c.date]: 'replace' },
+                            }));
+                          }}
+                        />
+                        <span>
+                          <strong>替换为新人员：{selectedUser.name}</strong>
+                          <small style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>(将自动移除原排班记录)</small>
+                        </span>
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: currentAction === 'keep' ? 'var(--accent-cyan)' : 'var(--text-secondary)', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name={`conflict-${c.date}`}
+                          checked={currentAction === 'keep'}
+                          onChange={() => {
+                            setConflictModalData(prev => ({
+                              ...prev,
+                              decisions: { ...prev.decisions, [c.date]: 'keep' },
+                            }));
+                          }}
+                        />
+                        <span>
+                          <strong>保留原值班人员</strong>
+                          <small style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>(放弃 {selectedUser.name} 在此时段的排班)</small>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 无冲突日期概要 */}
+            {conflictModalData.nonConflictDates.length > 0 && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--accent-green)', background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '4px', padding: '8px 12px', marginBottom: '16px' }}>
+                ✅ 无冲突日期（共 {conflictModalData.nonConflictDates.length} 天）：将正常为 <strong>{selectedUser.name}</strong> 创建排班。
+              </div>
+            )}
+
+            {/* 弹窗底部操作按钮 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-muted)', paddingTop: '14px' }}>
+              <button
+                type="button"
+                className="cyber-btn"
+                onClick={() => setConflictModalData(null)}
+                style={{ padding: '6px 14px', fontSize: '0.78rem' }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="cyber-btn success"
+                disabled={formSubmitting}
+                onClick={handleConfirmConflictResolution}
+                style={{ padding: '6px 18px', fontSize: '0.78rem' }}
+              >
+                {formSubmitting ? '正在处理...' : '确认执行排班'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 周视图导航 ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -199,11 +801,26 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
         </div>
       </div>
 
-      {/* ── 周视图格子 ── */}
+      {/* ── 周视图格子（含节假日/调休显示） ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', marginBottom: '20px' }}>
         {weekDays.map((dateStr, i) => {
           const dayDuties = dutyByDate[dateStr] || [];
           const isToday = dateStr === today;
+          const holiday = getHolidayInfo(dateStr);
+
+          let badgeBg = 'transparent';
+          let badgeColor = 'var(--text-muted)';
+          if (holiday.badgeType === 'holiday') {
+            badgeBg = 'rgba(255, 75, 75, 0.2)';
+            badgeColor = '#ff6b6b';
+          } else if (holiday.badgeType === 'workday') {
+            badgeBg = 'rgba(255, 165, 0, 0.2)';
+            badgeColor = '#ffa500';
+          } else if (holiday.badgeType === 'festival') {
+            badgeBg = 'rgba(0, 212, 255, 0.15)';
+            badgeColor = 'var(--accent-cyan)';
+          }
+
           return (
             <div
               key={dateStr}
@@ -212,35 +829,56 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
                 border: `1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-muted)'}`,
                 borderRadius: '4px',
                 padding: '8px 6px',
-                minHeight: '90px',
+                minHeight: '96px',
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
-              <div style={{ fontSize: '0.68rem', fontWeight: 'bold', color: isToday ? 'var(--accent-cyan)' : 'var(--text-muted)', marginBottom: '4px' }}>
-                {DAY_NAMES[i]}
+              {/* 星期 + 节假日标 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: isToday ? 'var(--accent-cyan)' : 'var(--text-muted)' }}>
+                  {DAY_NAMES[i]}
+                </span>
+                {holiday.badgeText && (
+                  <span style={{ fontSize: '0.58rem', padding: '1px 3px', borderRadius: '2px', background: badgeBg, color: badgeColor, fontWeight: 'bold', lineHeight: 1 }}>
+                    {holiday.badgeText}
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                {dateStr.slice(5)}
+
+              {/* 日期号 + 节日名 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                <span>{dateStr.slice(5)}</span>
+                {holiday.holidayName && holiday.holidayName !== '周末' && (
+                  <span style={{ color: badgeColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '42px' }}>
+                    {holiday.holidayName}
+                  </span>
+                )}
               </div>
-              {dayDuties.length === 0 ? (
-                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: '10px' }}>—</div>
-              ) : (
-                dayDuties.map(d => {
-                  const u = users.find(u => u.id === d.user_id);
-                  return (
-                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                      {u?.avatar && (
-                        <img src={u.avatar} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', border: d.is_active ? '1px solid var(--accent-green)' : '1px solid transparent', flexShrink: 0 }} />
-                      )}
-                      <div style={{ overflow: 'hidden' }}>
-                        <div style={{ fontSize: '0.68rem', color: d.is_active ? 'var(--accent-green)' : 'var(--text-bright)', fontWeight: d.is_active ? 'bold' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {u?.name || '—'}
+
+              {/* 当日值班人员 */}
+              <div style={{ flex: 1 }}>
+                {dayDuties.length === 0 ? (
+                  <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: '10px' }}>—</div>
+                ) : (
+                  dayDuties.map(d => {
+                    const u = users.find(u => u.id === d.user_id);
+                    return (
+                      <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', background: d.is_active ? 'rgba(74,222,128,0.1)' : 'transparent', padding: '2px 4px', borderRadius: '2px' }}>
+                        {u?.avatar && (
+                          <img src={u.avatar} alt="" style={{ width: '16px', height: '16px', borderRadius: '50%', border: d.is_active ? '1px solid var(--accent-green)' : '1px solid transparent', flexShrink: 0 }} />
+                        )}
+                        <div style={{ overflow: 'hidden', width: '100%' }}>
+                          <div style={{ fontSize: '0.68rem', color: d.is_active ? 'var(--accent-green)' : 'var(--text-bright)', fontWeight: d.is_active ? 'bold' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {u?.name || '—'}
+                          </div>
+                          <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>{d.shift_start}–{d.shift_end}</div>
                         </div>
-                        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{d.shift_start}–{d.shift_end}</div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           );
         })}
@@ -268,6 +906,8 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
             .map(d => {
               const u = users.find(u => u.id === d.user_id) || { name: '未知人员', avatar: '' };
               const isActive = d.is_active;
+              const holiday = d.duty_date ? getHolidayInfo(d.duty_date) : null;
+
               return (
                 <div
                   key={d.id}
@@ -287,9 +927,19 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
                     <img src={u.avatar} alt={u.name} style={{ width: '30px', height: '30px', borderRadius: '50%', border: isActive ? '2px solid var(--accent-green)' : '1px solid var(--border-muted)', flexShrink: 0 }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{u.name}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         {d.duty_date ? (
-                          <span>📅 {d.duty_date}（{['日', '一', '二', '三', '四', '五', '六'][new Date(d.duty_date + 'T12:00:00').getDay()]}）</span>
+                          <span>
+                            📅 {d.duty_date}（{holiday?.weekdayName}）
+                            {holiday?.holidayName && holiday?.holidayName !== '周末' && (
+                              <span style={{ color: 'var(--accent-cyan)', marginLeft: '4px' }}>{holiday.holidayName}</span>
+                            )}
+                            {holiday?.badgeText && holiday?.badgeType !== 'weekend' && (
+                              <span style={{ fontSize: '0.62rem', marginLeft: '3px', color: holiday.badgeType === 'workday' ? '#ffa500' : '#ff6b6b', fontWeight: 'bold' }}>
+                                [{holiday.badgeText}]
+                              </span>
+                            )}
+                          </span>
                         ) : (
                           <span style={{ color: 'var(--accent-orange)' }}>历史记录（无日期）</span>
                         )}

@@ -261,6 +261,11 @@ body {
 .service-form h3, .service-form textarea, .service-form button, .service-form .wide { grid-column: 1 / -1; }
 .service-form h3 { color: var(--text-bright); font-size: .92rem; }
 .service-record-form textarea { resize: vertical; }
+.service-field-group { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.service-field-label { font-size: 0.72rem; color: var(--text-secondary); font-weight: 500; height: 18px; display: flex; align-items: center; }
+.service-time-header { display: flex; justify-content: space-between; align-items: center; height: 18px; }
+.cyber-btn-quick { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; font-size: 0.68rem; border-radius: 3px; border: 1px solid var(--border-cyan); background: rgba(0,242,254,.08); color: var(--accent-cyan); cursor: pointer; transition: all 0.2s ease; font-family: inherit; line-height: 1.2; }
+.cyber-btn-quick:hover { background: rgba(0,242,254,.2); border-color: var(--accent-cyan); box-shadow: 0 0 8px rgba(0,242,254,.3); }
 .service-user-picker { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 7px; }
 .service-user-picker label { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border-muted); border-radius: 4px; color: var(--text-muted); cursor: pointer; }
 .service-user-picker label.selected { border-color: var(--accent-cyan); background: rgba(0,242,254,.06); }
@@ -841,6 +846,17 @@ body {
 .cyber-input:focus {
   border-color: var(--accent-cyan);
   box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+.cyber-input[type="datetime-local"],
+.cyber-input[type="date"] {
+  cursor: pointer;
+}
+
+.cyber-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.cyber-input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.8);
 }
 
 .cyber-select {

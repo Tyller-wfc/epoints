@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
+import { EpointsService } from './epoints.service';
 import { ExternalCustomer } from './entities/external-customer.entity';
 import { ServiceRecord } from './entities/service-record.entity';
 import { ServiceParticipant } from './entities/service-participant.entity';
@@ -54,9 +55,11 @@ export class CustomerServiceService {
     @InjectRepository(ServiceMissionLink) private readonly missionLinkRepo: Repository<ServiceMissionLink>,
     private readonly piiService: PiiService,
     private readonly dataSource: DataSource,
+    private readonly epointsService: EpointsService,
   ) {}
 
   async getCenter(requesterId: string) {
+    await this.epointsService.autoUpdateActiveDuty();
     const requester = await this.requireUser(requesterId);
     const allParticipants = await this.participantRepo.find();
     const records = (await this.recordRepo.find({ order: { createdAt: 'DESC' } }))
@@ -132,7 +135,8 @@ export class CustomerServiceService {
     return this.getCenter(requesterId);
   }
 
-  async createRecord(requesterId: string, data: any) {
+  async createRecord(requesterId: string, data: any, requestOrigin = '') {
+    await this.epointsService.autoUpdateActiveDuty();
     const creator = await this.requireUser(requesterId);
     const customer = await this.customerRepo.findOne({ where: { id: String(data.customerId), enabled: true } });
     if (!customer) throw new BadRequestException('请选择有效客户');
@@ -144,7 +148,11 @@ export class CustomerServiceService {
     if (!rawParticipants.length) throw new BadRequestException('请至少指定一名内部服务人员');
     const userIds = [...new Set(rawParticipants.map((item: any) => String(item.userId || '')))];
     if (userIds.length !== rawParticipants.length) throw new BadRequestException('服务参与人员不能重复');
-    const users = await this.userRepo.find({ where: { id: In(userIds), enabled: true } });
+    const users = await this.userRepo.createQueryBuilder('user')
+      .addSelect('user.phoneEncrypted')
+      .where('user.id IN (:...userIds)', { userIds })
+      .andWhere('user.enabled = :enabled', { enabled: true })
+      .getMany();
     if (users.length !== userIds.length) throw new BadRequestException('包含无效或停用的服务人员');
     if (users.some((item) => item.availability === 'Leave')) throw new BadRequestException('休假人员不能被分派服务');
     const weights = rawParticipants.map((item: any) => Number(item.contributionWeight));
@@ -169,8 +177,9 @@ export class CustomerServiceService {
       if (!activeDuty || !coordinatorIds.includes(activeDuty.user_id)) throw new BadRequestException('非工作时间服务必须由当前值班人员担任协调人');
     }
     const recordId = `sr-${randomUUID()}`;
+    let savedRecord: ServiceRecord | null = null;
     await this.dataSource.transaction(async (manager) => {
-      await manager.save(ServiceRecord, manager.create(ServiceRecord, {
+      savedRecord = await manager.save(ServiceRecord, manager.create(ServiceRecord, {
         id: recordId,
         customerId: customer.id,
         title: title.slice(0, 255),
@@ -181,6 +190,7 @@ export class CustomerServiceService {
         serviceMode,
         settlementMode,
         basePoints: Math.min(1000, Math.max(0, Number(data.basePoints) || 100)),
+        startedAt: data.startedAt ? new Date(data.startedAt) : null,
         promisedAt: data.promisedAt ? new Date(data.promisedAt) : null,
         createdBy: creator.id,
       }));
@@ -202,8 +212,46 @@ export class CustomerServiceService {
           allocationWeight: Number(item.allocationWeight),
         })));
       }
-      await manager.save(Feed, manager.create(Feed, { id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`, type: 'service', message: `【客户服务】${customer.name} 的服务事项“${title}”已登记。`, timestamp: new Date() }));
+      const participantNames = rawParticipants.map((p: any) => {
+        const u = users.find((item) => item.id === String(p.userId));
+        return u ? u.name : '服务人员';
+      });
+      const descSnippet = description.length > 80 ? `${description.slice(0, 80)}...` : description;
+      await manager.save(Feed, manager.create(Feed, {
+        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'service',
+        message: `【客户服务】${creator.name} 登记了客户“${customer.name}”的服务事项“${title}”（服务内容：${descSnippet}），服务人员：${participantNames.join('、')}。`,
+        timestamp: new Date(),
+      }));
     });
+
+    const participantDetails = rawParticipants.map((item: any) => {
+      const user = users.find((u) => u.id === String(item.userId))!;
+      const phone = user.phoneEncrypted ? this.piiService.decrypt(user.phoneEncrypted) : undefined;
+      return {
+        user,
+        role: item.participantRole,
+        weight: Number(item.contributionWeight),
+        phone,
+      };
+    });
+
+    if (savedRecord) {
+      try {
+        await this.epointsService.sendServiceWecomNotification(
+          savedRecord,
+          customer,
+          creator.name,
+          participantDetails,
+          requestOrigin,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        console.error('WeCom service notification failed:', error);
+        await this.epointsService.pushFeed('system', `【企业微信通知失败】服务“${title}”已登记，但消息推送失败：${message}`);
+      }
+    }
+
     return this.getCenter(requesterId);
   }
 

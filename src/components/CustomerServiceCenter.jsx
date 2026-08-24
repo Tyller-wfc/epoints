@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Award, BriefcaseBusiness, Check, CheckCircle2, Clock3, Headphones, MessageSquareText, Plus, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
+import { Award, BriefcaseBusiness, CalendarPlus, Check, CheckCircle2, Clock3, Headphones, MessageSquareText, Plus, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
 import {
   addServiceFeedback,
   createExternalCustomer,
@@ -7,6 +7,43 @@ import {
   getServiceCenter,
   transitionServiceRecord,
 } from '../data/mockData';
+
+const toLocalDateString = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  return `${year}-${month}-${day}`;
+};
+
+const formatTime = (timeInput) => {
+  if (!timeInput) return null;
+  try {
+    const d = new Date(timeInput);
+    if (isNaN(d.getTime())) return null;
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${month}-${day} ${hours}:${minutes}`;
+  } catch {
+    return null;
+  }
+};
+
+const formatDate = (timeInput) => {
+  if (!timeInput) return null;
+  try {
+    const d = new Date(timeInput);
+    if (isNaN(d.getTime())) return null;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return null;
+  }
+};
 
 const statusLabels = {
   New: '待受理', Accepted: '已受理', 'In Progress': '服务中',
@@ -51,9 +88,34 @@ export default function CustomerServiceCenter({ showToast }) {
   const [busy, setBusy] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showRecordForm, setShowRecordForm] = useState(false);
+  const [recordStartedAt, setRecordStartedAt] = useState('');
+  const [recordPromisedAt, setRecordPromisedAt] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedMissions, setSelectedMissions] = useState([]);
   const [settlementMode, setSettlementMode] = useState('Standalone');
+
+  const handleQuickOneMonth = () => {
+    let baseDate;
+    if (recordStartedAt) {
+      const parts = recordStartedAt.split('-').map(Number);
+      if (parts.length === 3 && !isNaN(parts[0])) {
+        baseDate = new Date(parts[0], parts[1] - 1, parts[2]);
+      } else {
+        baseDate = new Date(recordStartedAt);
+      }
+      if (isNaN(baseDate.getTime())) baseDate = new Date();
+    } else {
+      baseDate = new Date();
+      setRecordStartedAt(toLocalDateString(baseDate));
+    }
+    const end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+    const originalDay = end.getDate();
+    end.setMonth(end.getMonth() + 1);
+    if (end.getDate() !== originalDay && end.getMonth() % 12 !== (baseDate.getMonth() + 1) % 12) {
+      end.setDate(0);
+    }
+    setRecordPromisedAt(toLocalDateString(end));
+  };
 
   useEffect(() => {
     setSelectedMissions([]);
@@ -160,11 +222,13 @@ export default function CustomerServiceCenter({ showToast }) {
     const payload = { ...Object.fromEntries(form), settlementMode, participants: participantsPayload, missionLinks };
     if (await submit(() => createServiceRecord(payload))) {
       formEl.reset();
+      setRecordStartedAt('');
+      setRecordPromisedAt('');
       setSelectedUsers([]);
       setSelectedMissions([]);
       setSettlementMode('Standalone');
       setShowRecordForm(false);
-      showToast?.('success', '服务记录创建成功 ✓');
+      showToast?.('success', `服务记录“${payload.title}”创建成功，已提醒服务人 ✓`);
     }
   };
 
@@ -188,7 +252,20 @@ export default function CustomerServiceCenter({ showToast }) {
       {data.canManage && (
         <section className="service-toolbar">
           <button className="cyber-btn" onClick={() => setShowCustomerForm((value) => !value)}><UsersRound size={15} /> 客户档案</button>
-          <button className="cyber-btn success" onClick={() => setShowRecordForm((value) => !value)}><Plus size={15} /> 登记服务</button>
+          <button 
+            className="cyber-btn success" 
+            onClick={() => {
+              setShowRecordForm((value) => {
+                if (value) {
+                  setRecordStartedAt('');
+                  setRecordPromisedAt('');
+                }
+                return !value;
+              });
+            }}
+          >
+            <Plus size={15} /> 登记服务
+          </button>
         </section>
       )}
 
@@ -196,7 +273,6 @@ export default function CustomerServiceCenter({ showToast }) {
         <form className="glass-panel service-form" onSubmit={handleCreateCustomer}>
           <h3>新增外部客户</h3>
           <input className="cyber-input" name="name" placeholder="客户名称" required />
-          <input className="cyber-input" name="organization" placeholder="单位或组织" />
           <input className="cyber-input" name="contactName" placeholder="联系人" />
           <input className="cyber-input" name="contactPhone" placeholder="联系电话" />
           <textarea className="cyber-input" name="servicePreferences" placeholder="服务偏好与注意事项" rows={2} />
@@ -208,11 +284,10 @@ export default function CustomerServiceCenter({ showToast }) {
         <form className="glass-panel service-form service-record-form" onSubmit={handleCreateRecord}>
           <h3>登记客户服务</h3>
           <select className="cyber-select" name="customerId" required defaultValue="">
-            <option value="" disabled>选择外部客户</option>
+            <option value="" disabled>选择客户</option>
             {data.customers.filter((item) => item.enabled).map((item) => <option key={item.id} value={item.id}>{item.name} {item.organization ? `· ${item.organization}` : ''}</option>)}
           </select>
           <input className="cyber-input" name="title" placeholder="服务事项" required />
-          <input className="cyber-input" name="serviceType" placeholder="服务类型（例如：咨询支持、运维保障）" required />
           <select className="cyber-select" name="priority" defaultValue="" required>
             <option value="" disabled>选择优先级</option>
             <option>P0</option>
@@ -221,17 +296,63 @@ export default function CustomerServiceCenter({ showToast }) {
             <option>P3</option>
           </select>
           <select className="cyber-select" name="serviceMode" defaultValue="Work Hours"><option value="Work Hours">工作时间服务</option><option value="On Call">非工作时间值班服务</option></select>
-          <select 
-            className="cyber-select" 
-            name="settlementMode" 
-            value={settlementMode} 
-            onChange={(e) => setSettlementMode(e.target.value)}
-          >
-            <option value="Standalone">独立服务：影响个人 ePoints</option>
-            <option value="Mission Linked">关联任务：影响任务 ePoints</option>
-          </select>
-          <input className="cyber-input" name="basePoints" type="number" min="0" max="1000" defaultValue="100" required />
-          <input className="cyber-input" name="promisedAt" type="datetime-local" />
+          <div className="service-field-group">
+            <label className="service-field-label">结算模式</label>
+            <select 
+              className="cyber-select" 
+              name="settlementMode" 
+              value={settlementMode} 
+              onChange={(e) => setSettlementMode(e.target.value)}
+            >
+              <option value="Standalone">独立服务：影响个人 ePoints</option>
+              <option value="Mission Linked">关联任务：影响任务 ePoints</option>
+            </select>
+          </div>
+          <div className="service-field-group">
+            <label className="service-field-label">基础积分 (eP)</label>
+            <input className="cyber-input" name="basePoints" type="number" min="0" max="1000" defaultValue="100" placeholder="基础积分" required />
+          </div>
+          <div className="service-field-group">
+            <label className="service-field-label">服务开始时间</label>
+            <input 
+              className="cyber-input" 
+              name="startedAt" 
+              type="date" 
+              value={recordStartedAt} 
+              onChange={(e) => setRecordStartedAt(e.target.value)} 
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker();
+                } catch (_) {}
+              }}
+            />
+          </div>
+          <div className="service-field-group">
+            <div className="service-time-header">
+              <label className="service-field-label">服务结束时间</label>
+              <button 
+                type="button" 
+                className="cyber-btn-quick" 
+                onClick={handleQuickOneMonth}
+                title="按开始时间自动计算 1 个月后结束"
+              >
+                <CalendarPlus size={11} /> 快捷 1 个月
+              </button>
+            </div>
+            <input 
+              className="cyber-input" 
+              name="promisedAt" 
+              type="date" 
+              value={recordPromisedAt} 
+              onChange={(e) => setRecordPromisedAt(e.target.value)} 
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker();
+                } catch (_) {}
+              }}
+            />
+          </div>
+
           <textarea className="cyber-input wide" name="description" placeholder="客户需求" rows={3} required />
           <textarea className="cyber-input wide" name="promisedResult" placeholder="对客户承诺的结果和边界" rows={3} required />
           <div className="service-user-picker wide">
@@ -333,11 +454,17 @@ export default function CustomerServiceCenter({ showToast }) {
             <header>
               <div><span className={`service-priority ${selected.priority.toLowerCase()}`}>{selected.priority}</span><span className="badge cyan">{statusLabels[selected.status] || selected.status}</span></div>
               <h2>{selected.title}</h2>
-              <p>{customerById.get(selected.customerId)?.name} · {selected.serviceType} · {selected.serviceMode === 'On Call' ? '值班服务' : '工作时间服务'} · {selected.settlementMode === 'Mission Linked' ? '影响关联任务' : '影响个人 ePoints'}</p>
+              <p>{customerById.get(selected.customerId)?.name} · {selected.serviceMode === 'On Call' ? '值班服务' : '工作时间服务'} · {selected.settlementMode === 'Mission Linked' ? '影响关联任务' : '影响个人 ePoints'}</p>
             </header>
             <div className="service-detail-grid">
               <Detail label="客户需求" text={selected.description} />
               <Detail label="服务承诺" text={selected.promisedResult} />
+              {(selected.startedAt || selected.promisedAt) && (
+                <Detail 
+                  label="服务周期" 
+                  text={`${selected.startedAt ? formatDate(selected.startedAt) : '登记即开始'} 至 ${selected.promisedAt ? formatDate(selected.promisedAt) : '无明确截止'}`} 
+                />
+              )}
               {selected.resultSummary && <Detail label="服务结果" text={selected.resultSummary} />}
               <div className="service-participant-list">
                 <strong>内部服务人员</strong>

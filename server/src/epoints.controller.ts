@@ -197,7 +197,7 @@ export class EpointsController {
   }
 
   @Post('duty')
-  async createDuty(@Req() request: any, @Body() data: { userId: string; dutyDate: string; shiftStart: string; shiftEnd: string }) {
+  async createDuty(@Req() request: any, @Body() data: { userId: string; dutyDate?: string; dutyDates?: string[]; shiftStart: string; shiftEnd: string; replaceDutyIds?: string[] }) {
     return this.epointsService.createDuty(request.user.sub, data);
   }
 

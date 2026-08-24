@@ -50,7 +50,10 @@ import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, Al
 function App() {
   const [state, setState] = useState(null);
   const [sessionStatus, setSessionStatus] = useState('loading');
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    return ['dashboard', 'missions', 'market', 'support', 'service', 'admin'].includes(tabParam) ? tabParam : 'dashboard';
+  });
   const [quickClaimMissionId] = useState(() => new URLSearchParams(window.location.search).get('claimMission'));
   const [toast, setToast] = useState(null); // { type, text, leaving }
   const toastTimer = React.useRef(null);

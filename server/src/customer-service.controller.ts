@@ -17,7 +17,7 @@ export class CustomerServiceController {
 
   @Post('records')
   createRecord(@Req() request: any, @Body() data: any) {
-    return this.service.createRecord(request.user.sub, data);
+    return this.service.createRecord(request.user.sub, data, request.headers?.origin || '');
   }
 
   @Post('records/:id/transition')

@@ -22,6 +22,8 @@ import { MissionDomain } from './entities/mission-domain.entity';
 import { MissionNotificationRecipient } from './entities/mission-notification-recipient.entity';
 import { PiiService } from './pii.service';
 import { PointLedger } from './entities/point-ledger.entity';
+import { ServiceRecord } from './entities/service-record.entity';
+import { ExternalCustomer } from './entities/external-customer.entity';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
@@ -53,6 +55,7 @@ export class EpointsService {
   ) {}
 
   async getAppState(requesterId = this.currentUserId) {
+    await this.autoUpdateActiveDuty();
     const users = await this.userRepo.find();
     const missions = await this.missionRepo.find();
     const rewards = await this.rewardRepo.find();
@@ -856,6 +859,76 @@ export class EpointsService {
     await this.sendConfiguredWecomText(content);
   }
 
+  async sendServiceWecomNotification(
+    record: ServiceRecord,
+    customer: ExternalCustomer,
+    creatorName: string,
+    participants: { user: User; role: string; weight: number; phone?: string }[],
+    requestOrigin = '',
+  ) {
+    const roleLabels: Record<string, string> = {
+      'Service Owner': '服务负责人',
+      'Primary Provider': '主要提供者',
+      Collaborator: '协同人员',
+      'On-Call Coordinator': '值班协调员',
+    };
+    const participantListStr = participants
+      .map((p) => `${p.user.name}（${roleLabels[p.role] || p.role}，权重 ${p.weight}%）`)
+      .join('、');
+
+    const customerDisplay = customer.organization ? `${customer.name}（${customer.organization}）` : customer.name;
+    const serviceModeLabel = record.serviceMode === 'On Call' ? '非工作时间值班服务' : '工作时间服务';
+    const settlementModeLabel = record.settlementMode === 'Standalone' ? '独立服务结算' : '任务关联结算';
+    const description = (record.description || '未填写').slice(0, 500);
+    const promisedResult = (record.promisedResult || '未填写').slice(0, 500);
+    const publicWebUrl = (process.env.PUBLIC_WEB_URL || requestOrigin).trim().replace(/\/+$/, '');
+    const serviceUrl = publicWebUrl ? `${publicWebUrl}/?tab=service` : '';
+
+    const timeLines: string[] = [];
+    if (record.startedAt) {
+      timeLines.push(`> 开始时间：${this.formatDateOnly(record.startedAt)}`);
+    }
+    if (record.promisedAt) {
+      timeLines.push(`> 期望完成：${this.formatDateOnly(record.promisedAt)}`);
+    }
+
+    const content = [
+      '## 【ePoints 新增客户服务分派】',
+      `> 客户：${customerDisplay}`,
+      `> 服务事项：${record.title}`,
+      `> 优先级：${record.priority}`,
+      `> 服务类型：${record.serviceType || '咨询支持'}`,
+      `> 服务模式：${serviceModeLabel}`,
+      `> 基础积分：${record.basePoints} eP (${settlementModeLabel})`,
+      `> 登记人：${creatorName}`,
+      `> 服务人员：${participantListStr}`,
+      ...timeLines,
+      `> 服务内容：${description}`,
+      `> 承诺交付：${promisedResult}`,
+      serviceUrl ? `[前往客户服务中心查看](${serviceUrl})` : '请相关服务人员及时进入客户服务中心跟进并受理。',
+    ].join('\n');
+
+    const mentionMobiles = participants
+      .map((p) => p.phone)
+      .filter((phone): phone is string => Boolean(phone));
+
+    const textPrompt = `【服务分派提醒】${creatorName} 为客户“${customer.name}”登记了服务事项【${record.title}】。\n服务内容：${description}\n承诺交付：${promisedResult}\n请相关服务人员及时跟进并受理客户服务。`;
+    await this.sendConfiguredWecomMarkdown(content, mentionMobiles, textPrompt);
+  }
+
+  private formatDateOnly(date: Date | string) {
+    try {
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return String(date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return String(date);
+    }
+  }
+
   private async sendConfiguredWecomText(content: string, dynamicMobiles: string[] = []) {
     const webhook = await this.settingRepo.findOne({ where: { key: 'webhook_url' } });
     if (!webhook || !this.isValidWecomWebhook(webhook.value)) return;
@@ -865,13 +938,13 @@ export class EpointsService {
     await this.sendWecomText(webhook.value, content, mobiles);
   }
 
-  private async sendConfiguredWecomMarkdown(content: string, dynamicMobiles: string[] = []) {
+  private async sendConfiguredWecomMarkdown(content: string, dynamicMobiles: string[] = [], followUpPrompt = '请相关成员及时查看并认领新任务。') {
     const webhook = await this.settingRepo.findOne({ where: { key: 'webhook_url' } });
     if (!webhook || !this.isValidWecomWebhook(webhook.value)) return;
     await this.sendWecomMarkdown(webhook.value, content);
 
     if (dynamicMobiles.length) {
-      await this.sendConfiguredWecomText('请相关成员及时查看并认领新任务。', dynamicMobiles);
+      await this.sendConfiguredWecomText(followUpPrompt, dynamicMobiles);
     }
   }
 
@@ -951,6 +1024,93 @@ export class EpointsService {
     return { title, description, category, image, points_cost: pointsCost, inventory, level_required: levelRequired };
   }
 
+  private getScheduledDutyForTime(duties: Duty[], now: Date): Duty | null {
+    const formatterDate = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const partsDate = formatterDate.formatToParts(now);
+    const year = partsDate.find(p => p.type === 'year').value;
+    const month = partsDate.find(p => p.type === 'month').value;
+    const day = partsDate.find(p => p.type === 'day').value;
+    const currentDateStr = `${year}-${month}-${day}`;
+
+    const formatterTime = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const partsTime = formatterTime.formatToParts(now);
+    let hour = partsTime.find(p => p.type === 'hour').value;
+    let minute = partsTime.find(p => p.type === 'minute').value;
+    if (hour === '24') hour = '00';
+    const currentTimeStr = `${hour}:${minute}`;
+
+    for (const d of duties) {
+      if (!d.duty_date) continue;
+      
+      const start = d.shift_start;
+      const end = d.shift_end;
+      
+      let isActiveTime = false;
+      if (start < end) {
+        isActiveTime = (currentDateStr === d.duty_date && currentTimeStr >= start && currentTimeStr < end);
+      } else {
+        const dDate = new Date(d.duty_date + 'T12:00:00');
+        const curDate = new Date(currentDateStr + 'T12:00:00');
+        const diffMs = curDate.getTime() - dDate.getTime();
+        const isNextDay = Math.round(diffMs / (24 * 3600 * 1000)) === 1;
+        
+        isActiveTime = (currentDateStr === d.duty_date && currentTimeStr >= start) || 
+                       (isNextDay && currentTimeStr < end);
+      }
+      
+      if (isActiveTime) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  async autoUpdateActiveDuty() {
+    const duties = await this.dutyRepo.find();
+    if (duties.length === 0) return;
+
+    const matchedDuty = this.getScheduledDutyForTime(duties, new Date());
+
+    if (matchedDuty) {
+      const lastActiveSetting = await this.settingRepo.findOne({ where: { key: 'last_auto_activated_duty_id' } });
+      const lastActiveId = lastActiveSetting?.value || '';
+
+      if (matchedDuty.id !== lastActiveId) {
+        let onDutyName = '未分配';
+        for (const d of duties) {
+          const newActive = d.id === matchedDuty.id;
+          if (d.is_active !== newActive) {
+            d.is_active = newActive;
+            await this.dutyRepo.save(d);
+          }
+          if (newActive) {
+            const u = await this.userRepo.findOne({ where: { id: d.user_id } });
+            if (u) onDutyName = u.name;
+          }
+        }
+
+        if (!lastActiveSetting) {
+          await this.settingRepo.save(this.settingRepo.create({ key: 'last_auto_activated_duty_id', value: matchedDuty.id }));
+        } else {
+          lastActiveSetting.value = matchedDuty.id;
+          await this.settingRepo.save(lastActiveSetting);
+        }
+
+        await this.pushFeed('system', `【值班交接】系统根据排班表自动完成交接班，当前在岗技术值班员：${onDutyName}。`);
+      }
+    }
+  }
+
   async setActiveDuty(requesterId: string, dutyId: string) {
     await this.assertAdmin(requesterId);
     const duties = await this.dutyRepo.find();
@@ -964,28 +1124,118 @@ export class EpointsService {
       }
     }
 
+    const matchedDuty = this.getScheduledDutyForTime(duties, new Date());
+    if (matchedDuty) {
+      let lastActiveSetting = await this.settingRepo.findOne({ where: { key: 'last_auto_activated_duty_id' } });
+      if (!lastActiveSetting) {
+        lastActiveSetting = this.settingRepo.create({ key: 'last_auto_activated_duty_id', value: matchedDuty.id });
+      } else {
+        lastActiveSetting.value = matchedDuty.id;
+      }
+      await this.settingRepo.save(lastActiveSetting);
+    }
+
     await this.pushFeed('system', `【值班交接】技术保障中心完成交接班，当前在岗技术值班员：${onDutyName}。`);
     return this.getAppState(requesterId);
   }
 
-  async createDuty(requesterId: string, data: { userId: string; dutyDate: string; shiftStart: string; shiftEnd: string }) {
+  private parseDutyInterval(dutyDate: string, shiftStart: string, shiftEnd: string): { start: number; end: number } | null {
+    if (!dutyDate || !shiftStart || !shiftEnd) return null;
+    const baseDate = new Date(`${dutyDate}T00:00:00+08:00`);
+    if (isNaN(baseDate.getTime())) return null;
+    const [sh, sm] = shiftStart.split(':').map(Number);
+    const [eh, em] = shiftEnd.split(':').map(Number);
+    if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return null;
+
+    const start = baseDate.getTime() + (sh * 60 + sm) * 60 * 1000;
+    let end: number;
+    if (shiftEnd === '24:00' || (eh === 24 && em === 0)) {
+      end = baseDate.getTime() + 24 * 60 * 60 * 1000;
+    } else if (eh < sh || (eh === sh && em <= sm)) {
+      // 跨夜排班 (例如 22:00 -> 08:00)
+      end = baseDate.getTime() + (24 * 60 + eh * 60 + em) * 60 * 1000;
+    } else {
+      end = baseDate.getTime() + (eh * 60 + em) * 60 * 1000;
+    }
+    return { start, end };
+  }
+
+  private isDutyOverlapping(d1: { duty_date: string | null; shift_start: string; shift_end: string }, d2: { duty_date: string | null; shift_start: string; shift_end: string }): boolean {
+    if (!d1.duty_date || !d2.duty_date) return false;
+    const r1 = this.parseDutyInterval(d1.duty_date, d1.shift_start, d1.shift_end);
+    const r2 = this.parseDutyInterval(d2.duty_date, d2.shift_start, d2.shift_end);
+    if (!r1 || !r2) return false;
+    return r1.start < r2.end && r2.start < r1.end;
+  }
+
+  async createDuty(requesterId: string, data: { userId: string; dutyDate?: string; dutyDates?: string[]; shiftStart: string; shiftEnd: string; replaceDutyIds?: string[] }) {
     await this.assertAdmin(requesterId);
     const user = await this.userRepo.findOne({ where: { id: data.userId } });
     if (!user) throw new NotFoundException('人员不存在');
-    if (!data.dutyDate || !/^\d{4}-\d{2}-\d{2}$/.test(data.dutyDate)) throw new BadRequestException('请提供有效的排班日期（格式 YYYY-MM-DD）');
     if (!data.shiftStart || !data.shiftEnd) throw new BadRequestException('请提供班次开始和结束时间');
 
-    const id = `duty-${randomUUID().slice(0, 8)}`;
-    const duty = this.dutyRepo.create({
-      id,
-      user_id: data.userId,
-      duty_date: data.dutyDate,
-      shift_start: data.shiftStart,
-      shift_end: data.shiftEnd,
-      is_active: false,
-    });
-    await this.dutyRepo.save(duty);
-    await this.pushFeed('system', `【排班更新】管理员为 ${user.name} 新增了 ${data.dutyDate} 的值班排班（${data.shiftStart}–${data.shiftEnd}）。`);
+    const rawDates = Array.isArray(data.dutyDates) && data.dutyDates.length > 0
+      ? data.dutyDates
+      : (data.dutyDate ? [data.dutyDate] : []);
+
+    const dates = Array.from(new Set(rawDates.filter(Boolean)));
+    if (dates.length === 0) {
+      throw new BadRequestException('请提供至少一个有效的排班日期（格式 YYYY-MM-DD）');
+    }
+
+    for (const d of dates) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        throw new BadRequestException(`排班日期格式无效：${d}，应为 YYYY-MM-DD`);
+      }
+    }
+
+    // 1. 如果用户选择替换冲突排班，先删除被替换的排班记录
+    if (Array.isArray(data.replaceDutyIds) && data.replaceDutyIds.length > 0) {
+      for (const replaceId of data.replaceDutyIds) {
+        await this.dutyRepo.delete({ id: replaceId });
+      }
+    }
+
+    // 2. 校验时段唯一性：同一个时间段内，只保留一个值班人员
+    const existingDuties = await this.dutyRepo.find();
+    for (const dDate of dates) {
+      const candidate = { duty_date: dDate, shift_start: data.shiftStart, shift_end: data.shiftEnd };
+      for (const existing of existingDuties) {
+        if (existing.duty_date && this.isDutyOverlapping(candidate, existing)) {
+          const conflictingUser = await this.userRepo.findOne({ where: { id: existing.user_id } });
+          const confName = conflictingUser?.name || '其他人员';
+          throw new BadRequestException(`日期 ${dDate}（${data.shiftStart}–${data.shiftEnd}）与现有值班人员 ${confName}（${existing.shift_start}–${existing.shift_end}）存在时段冲突，请在冲突选项中处理后再保存。`);
+        }
+      }
+    }
+
+    // 3. 创建新增的排班记录
+    const dutiesToInsert: Duty[] = [];
+    for (const dDate of dates) {
+      const id = `duty-${randomUUID().slice(0, 8)}`;
+      const duty = this.dutyRepo.create({
+        id,
+        user_id: data.userId,
+        duty_date: dDate,
+        shift_start: data.shiftStart,
+        shift_end: data.shiftEnd,
+        is_active: false,
+      });
+      dutiesToInsert.push(duty);
+    }
+    await this.dutyRepo.save(dutiesToInsert);
+
+    // 4. 自动刷新当前在岗状态
+    await this.autoUpdateActiveDuty();
+
+    // 5. 发布系统消息动态
+    if (dates.length === 1) {
+      await this.pushFeed('system', `【排班更新】管理员为 ${user.name} 新增了 ${dates[0]} 的值班排班（${data.shiftStart}–${data.shiftEnd}）。`);
+    } else {
+      const sortedDates = [...dates].sort();
+      await this.pushFeed('system', `【排班更新】管理员为 ${user.name} 批量新增了 ${sortedDates.length} 天的值班排班（${sortedDates[0]} 至 ${sortedDates[sortedDates.length - 1]}，时段：${data.shiftStart}–${data.shiftEnd}）。`);
+    }
+
     return this.getAppState(requesterId);
   }
 
