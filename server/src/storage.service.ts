@@ -5,11 +5,6 @@ import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
 import { Attachment } from './entities/attachment.entity';
 
-const ALLOWED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx',
-  '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.log', '.json', '.zip', '.7z',
-]);
-
 /** 扩展名 → 规范 MIME 类型（头像 & 商品图片共用） */
 const AVATAR_MIME_TYPES: Record<string, string> = {
   '.jpg':  'image/jpeg',
@@ -159,13 +154,8 @@ export class StorageService implements OnModuleInit {
   }
 
   private validateFile(file: Express.Multer.File, originalName: string) {
-    const extension = extname(originalName).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(extension)) throw new BadRequestException(`不支持的附件格式：${extension || originalName}`);
     if (!file.size) throw new BadRequestException(`附件不能为空：${originalName}`);
     if (file.size > 20 * 1024 * 1024) throw new BadRequestException(`附件超过 20 MB：${originalName}`);
-    if (['.txt', '.csv', '.log', '.json'].includes(extension) && file.buffer.includes(0)) {
-      throw new BadRequestException(`文本附件内容无效：${originalName}`);
-    }
   }
 
   private hasValidImageSignature(buffer: Buffer, mimeType: string): boolean {

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FileText, Image, Paperclip, Upload, X } from 'lucide-react';
 import { formatFileSize } from '../utils/files';
 
-const ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.log,.json,.zip,.7z';
 const MAX_FILES = 10;
 const MAX_SIZE = 20 * 1024 * 1024;
 
@@ -36,9 +35,9 @@ export default function AttachmentPicker({ files, onChange, disabled = false }) 
     <div className="attachment-picker">
       <button type="button" disabled={disabled} className={`attachment-dropzone ${dragging ? 'dragging' : ''}`} onClick={() => inputRef.current?.click()} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}>
         <Upload size={19} />
-        <span><strong>选择或拖入图片与附件</strong><small>最多 10 个，单个不超过 20 MB</small></span>
+        <span><strong>选择或拖入附件</strong><small>支持任意格式，最多 10 个，单个不超过 20 MB</small></span>
       </button>
-      <input ref={inputRef} hidden type="file" multiple accept={ACCEPT} onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }} />
+      <input ref={inputRef} hidden type="file" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }} />
       {error && <div className="attachment-error">{error}</div>}
       {files.length > 0 && <div className="attachment-selection">
         {files.map((file, index) => {

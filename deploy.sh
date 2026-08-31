@@ -63,6 +63,12 @@ log_step "安装后端依赖..."
 cd "$SERVER_DIR"
 npm install --registry="$NPM_REGISTRY" --prefer-offline
 
+log_step "执行数据库迁移..."
+npm run migrate:attachments
+npm run migrate:service
+npm run migrate:service-mission-settlement
+log_info "数据库迁移完成"
+
 log_step "构建后端..."
 npm run build
 log_info "后端构建完成 → $SERVER_DIR/dist/"
