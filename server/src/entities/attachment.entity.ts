@@ -6,7 +6,7 @@ export class Attachment {
   id: string;
 
   @Column({ name: 'owner_type', length: 20 })
-  ownerType: 'mission' | 'ticket' | 'reward';
+  ownerType: 'mission' | 'ticket' | 'reward' | 'service';
 
   @Column({ name: 'owner_id' })
   ownerId: string;

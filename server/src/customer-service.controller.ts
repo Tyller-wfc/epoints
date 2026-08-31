@@ -1,5 +1,12 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CustomerServiceService } from './customer-service.service';
+
+const uploadOptions = {
+  storage: memoryStorage(),
+  limits: { files: 10, fileSize: 20 * 1024 * 1024 },
+};
 
 @Controller('api/service-center')
 export class CustomerServiceController {
@@ -16,8 +23,9 @@ export class CustomerServiceController {
   }
 
   @Post('records')
-  createRecord(@Req() request: any, @Body() data: any) {
-    return this.service.createRecord(request.user.sub, data, request.headers?.origin || '');
+  @UseInterceptors(FilesInterceptor('files', 10, uploadOptions))
+  createRecord(@Req() request: any, @Body() data: any, @UploadedFiles() files: Express.Multer.File[]) {
+    return this.service.createRecord(request.user.sub, data, request.headers?.origin || '', files || []);
   }
 
   @Put('records/:id')

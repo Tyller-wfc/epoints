@@ -61,6 +61,13 @@ describe('CustomerServiceService createRecord notifications', () => {
   const mockMissionLinkRepo = {
     find: jest.fn(),
   };
+  const mockAttachmentRepo = {
+    find: jest.fn(),
+  };
+  const mockStorageService = {
+    uploadFiles: jest.fn(),
+    deleteObjects: jest.fn(),
+  };
   const mockPiiService = {
     decrypt: jest.fn((val) => `decrypted-${val}`),
     mask: jest.fn((val) => val),
@@ -87,6 +94,9 @@ describe('CustomerServiceService createRecord notifications', () => {
     mockEpointsService.autoUpdateActiveDuty.mockResolvedValue(undefined);
     mockEpointsService.sendServiceWecomNotification.mockResolvedValue(undefined);
     mockEpointsService.pushFeed.mockResolvedValue(undefined);
+    mockAttachmentRepo.find.mockResolvedValue([]);
+    mockStorageService.uploadFiles.mockResolvedValue([]);
+    mockStorageService.deleteObjects.mockResolvedValue(undefined);
     service = new CustomerServiceService(
       mockCustomerRepo as any,
       mockRecordRepo as any,
@@ -98,6 +108,8 @@ describe('CustomerServiceService createRecord notifications', () => {
       mockDutyRepo as any,
       mockMissionRepo as any,
       mockMissionLinkRepo as any,
+      mockAttachmentRepo as any,
+      mockStorageService as any,
       mockPiiService as any,
       mockDataSource as any,
       mockEpointsService as any,
@@ -116,6 +128,7 @@ describe('CustomerServiceService createRecord notifications', () => {
     mockLedgerRepo.find.mockResolvedValue([]);
     mockDutyRepo.findOne.mockResolvedValue(null);
     mockMissionRepo.find.mockResolvedValue([]);
+    mockAttachmentRepo.find.mockResolvedValue([]);
   };
 
   it('sends WeCom notification to service participants on createRecord', async () => {
@@ -174,6 +187,52 @@ describe('CustomerServiceService createRecord notifications', () => {
     expect(participants[0].user.id).toBe('u-3');
     expect(participants[0].phone).toBe('decrypted-enc-13800138000');
     expect(participants[0].role).toBe('Service Owner');
+  });
+
+  it('saves uploaded attachments against the created service record', async () => {
+    const creatorUser = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+    const participantUser = { id: 'u-3', name: '张工', phoneEncrypted: 'enc-13800138000', enabled: true, availability: 'Available' };
+    const customer = { id: 'c-1', name: '某某科技有限公司', organization: '技术部', enabled: true };
+    const uploadedAttachment = {
+      id: 'att-1',
+      ownerType: 'service',
+      ownerId: 'sr-any',
+      originalName: '需求说明.pdf',
+      objectKey: 'service/2026/08/att-1.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 128,
+      checksum: 'hash',
+      isImage: false,
+      uploadedBy: 'u-2',
+    };
+
+    mockUserRepo.findOne.mockResolvedValue(creatorUser);
+    mockCustomerRepo.findOne.mockResolvedValue(customer);
+    mockUserRepo.createQueryBuilder.mockReturnValue({
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([participantUser]),
+    });
+    mockEmptyCenter(creatorUser, [creatorUser, participantUser]);
+    mockStorageService.uploadFiles.mockResolvedValue([uploadedAttachment]);
+
+    await service.createRecord('u-2', {
+      customerId: 'c-1',
+      title: '带附件的客户服务',
+      description: '协助客户确认需求材料',
+      promisedResult: '输出处理结果',
+      priority: 'P2',
+      serviceMode: 'Work Hours',
+      settlementMode: 'Standalone',
+      basePoints: 100,
+      participants: [
+        { userId: 'u-3', participantRole: 'Service Owner', contributionWeight: 100, responsibility: '负责处理' },
+      ],
+    }, '', [{ originalname: '需求说明.pdf' }] as any);
+
+    expect(mockStorageService.uploadFiles).toHaveBeenCalledWith('service', expect.stringMatching(/^sr-/), 'u-2', expect.any(Array));
+    expect(lastTransactionManager.save).toHaveBeenCalledWith(expect.anything(), [uploadedAttachment]);
   });
 
   it('handles WeCom notification failure gracefully without interrupting service creation', async () => {

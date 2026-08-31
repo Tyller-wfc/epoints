@@ -8,6 +8,8 @@ import {
   transitionServiceRecord,
   updateServiceRecord,
 } from '../data/mockData';
+import AttachmentList from './AttachmentList';
+import AttachmentPicker from './AttachmentPicker';
 
 const toLocalDateString = (d) => {
   const pad = (n) => String(n).padStart(2, '0');
@@ -104,6 +106,7 @@ export default function CustomerServiceCenter({ showToast }) {
   const [recordPromisedAt, setRecordPromisedAt] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedMissions, setSelectedMissions] = useState([]);
+  const [serviceFiles, setServiceFiles] = useState([]);
   const [settlementMode, setSettlementMode] = useState('Standalone');
   const [editingRecordId, setEditingRecordId] = useState(null);
   const [editStartedAt, setEditStartedAt] = useState('');
@@ -254,12 +257,13 @@ export default function CustomerServiceCenter({ showToast }) {
     const form = new FormData(formEl);
     const { error: payloadError, payload } = buildRecordPayload(form, selectedUsers, selectedMissions);
     if (payloadError) return setError(payloadError);
-    if (await submit(() => createServiceRecord(payload))) {
+    if (await submit(() => createServiceRecord(payload, serviceFiles))) {
       formEl.reset();
       setRecordStartedAt('');
       setRecordPromisedAt('');
       setSelectedUsers([]);
       setSelectedMissions([]);
+      setServiceFiles([]);
       setSettlementMode('Standalone');
       setShowRecordForm(false);
       showToast?.('success', `服务记录“${payload.title}”创建成功，已提醒服务人 ✓`);
@@ -325,6 +329,7 @@ export default function CustomerServiceCenter({ showToast }) {
                 if (value) {
                   setRecordStartedAt('');
                   setRecordPromisedAt('');
+                  setServiceFiles([]);
                 }
                 return !value;
               });
@@ -422,6 +427,9 @@ export default function CustomerServiceCenter({ showToast }) {
 
           <textarea className="cyber-input wide" name="description" placeholder="客户需求" rows={3} required />
           <textarea className="cyber-input wide" name="promisedResult" placeholder="对客户承诺的结果和边界" rows={3} required />
+          <div className="wide">
+            <AttachmentPicker files={serviceFiles} onChange={setServiceFiles} disabled={busy} />
+          </div>
           <div className="service-user-picker wide">
             {data.users.filter((item) => item.enabled && item.availability !== 'Leave').map((user) => (
               <label key={user.id} className={selectedUsers.includes(user.id) ? 'selected' : ''}>
@@ -556,6 +564,8 @@ export default function CustomerServiceCenter({ showToast }) {
               </div>
               {selected.settlementMode === 'Mission Linked' && <div className="service-participant-list"><strong>关联任务及权重</strong>{missionLinks.map((link) => <div key={link.id}><span>{missionById.get(link.missionId)?.title || link.missionId}<small>服务影响权重 {link.allocationWeight}%</small></span><b>任务 ePoints 调整</b></div>)}</div>}
             </div>
+
+            <AttachmentList attachments={selected.attachments || []} />
 
             {data.canManage && selected.status === 'Returned' && (
               <section className="service-return-admin">

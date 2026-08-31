@@ -68,7 +68,7 @@ export class StorageService implements OnModuleInit {
     }
   }
 
-  async uploadFiles(ownerType: 'mission' | 'ticket', ownerId: string, userId: string, files: Express.Multer.File[]) {
+  async uploadFiles(ownerType: 'mission' | 'ticket' | 'service', ownerId: string, userId: string, files: Express.Multer.File[]) {
     const uploaded: Attachment[] = [];
     try {
       for (const file of files) {

@@ -15,6 +15,8 @@ import { Feed } from './entities/feed.entity';
 import { PiiService } from './pii.service';
 import { Mission } from './entities/mission.entity';
 import { ServiceMissionLink } from './entities/service-mission-link.entity';
+import { Attachment } from './entities/attachment.entity';
+import { StorageService } from './storage.service';
 
 const TRANSITIONS: Record<string, string[]> = {
   New: ['Accepted', 'Returned', 'In Progress', 'Cancelled'],
@@ -54,6 +56,8 @@ export class CustomerServiceService {
     @InjectRepository(Duty) private readonly dutyRepo: Repository<Duty>,
     @InjectRepository(Mission) private readonly missionRepo: Repository<Mission>,
     @InjectRepository(ServiceMissionLink) private readonly missionLinkRepo: Repository<ServiceMissionLink>,
+    @InjectRepository(Attachment) private readonly attachmentRepo: Repository<Attachment>,
+    private readonly storageService: StorageService,
     private readonly piiService: PiiService,
     private readonly dataSource: DataSource,
     private readonly epointsService: EpointsService,
@@ -78,7 +82,7 @@ export class CustomerServiceService {
     const recordIds = records.map((item) => item.id);
     const participants = allParticipants.filter((item) => recordIds.includes(item.serviceRecordId));
     const participantIds = participants.map((item) => item.id);
-    const [customers, feedback, evaluations, users, ledger, activeDuty, links, missions] = await Promise.all([
+    const [customers, feedback, evaluations, users, ledger, activeDuty, links, missions, attachments] = await Promise.all([
       this.customerRepo.createQueryBuilder('customer').addSelect('customer.contactPhoneEncrypted').getMany(),
       recordIds.length ? this.feedbackRepo.find({ where: { serviceRecordId: In(recordIds) }, order: { occurredAt: 'DESC' } }) : [],
       participantIds.length ? this.evaluationRepo.find({ where: { participantId: In(participantIds) }, order: { evaluatedAt: 'DESC' } }) : [],
@@ -87,8 +91,15 @@ export class CustomerServiceService {
       this.dutyRepo.findOne({ where: { is_active: true } }),
       recordIds.length ? this.missionLinkRepo.find({ where: { serviceRecordId: In(recordIds) } }) : [],
       this.missionRepo.find(),
+      recordIds.length ? this.attachmentRepo.find({ where: { ownerType: 'service', ownerId: In(recordIds) }, order: { createdAt: 'ASC' } }) : [],
     ]);
     const customerIds = new Set(records.map((item) => item.customerId));
+    const attachmentMap = new Map<string, ReturnType<CustomerServiceService['serializeAttachment']>[]>();
+    for (const attachment of attachments) {
+      const list = attachmentMap.get(attachment.ownerId) || [];
+      list.push(this.serializeAttachment(attachment));
+      attachmentMap.set(attachment.ownerId, list);
+    }
     return {
       currentUserId: requesterId,
       customers: customers.filter((item) => requester.roleType === 'Admin' || customerIds.has(item.id)).map((item) => ({
@@ -100,7 +111,7 @@ export class CustomerServiceService {
         servicePreferences: item.servicePreferences,
         enabled: item.enabled,
       })),
-      records,
+      records: records.map((record) => ({ ...record, attachments: attachmentMap.get(record.id) || [] })),
       participants,
       feedback,
       evaluations,
@@ -146,7 +157,7 @@ export class CustomerServiceService {
     const promisedResult = String(data.promisedResult || '').trim();
     if (!title || !description || !promisedResult) throw new BadRequestException('标题、客户需求和承诺结果不能为空');
 
-    const rawParticipants = Array.isArray(data.participants) ? data.participants : [];
+    const rawParticipants = this.parseArrayField(data.participants);
     if (!rawParticipants.length) throw new BadRequestException('请至少指定一名内部服务人员');
     const userIds = [...new Set(rawParticipants.map((item: any) => String(item.userId || '')))];
     if (userIds.length !== rawParticipants.length) throw new BadRequestException('服务参与人员不能重复');
@@ -165,7 +176,7 @@ export class CustomerServiceService {
 
     const serviceMode = data.serviceMode === 'On Call' ? 'On Call' : 'Work Hours';
     const settlementMode = data.settlementMode === 'Mission Linked' ? 'Mission Linked' : 'Standalone';
-    const rawLinks = Array.isArray(data.missionLinks) ? data.missionLinks : [];
+    const rawLinks = this.parseArrayField(data.missionLinks);
     if (settlementMode === 'Mission Linked' && !rawLinks.length) throw new BadRequestException('任务关联服务至少需要关联一个内部任务');
     if (settlementMode === 'Standalone' && rawLinks.length) throw new BadRequestException('独立服务不能关联内部任务');
     if (rawLinks.length) {
@@ -201,57 +212,64 @@ export class CustomerServiceService {
     };
   }
 
-  async createRecord(requesterId: string, data: any, requestOrigin = '') {
+  async createRecord(requesterId: string, data: any, requestOrigin = '', files: Express.Multer.File[] = []) {
     const creator = await this.requireUser(requesterId);
     const draft = await this.validateRecordDraft(data);
     const recordId = `sr-${randomUUID()}`;
+    const attachments = await this.storageService.uploadFiles('service', recordId, requesterId, files);
     let savedRecord: ServiceRecord | null = null;
-    await this.dataSource.transaction(async (manager) => {
-      savedRecord = await manager.save(ServiceRecord, manager.create(ServiceRecord, {
-        id: recordId,
-        customerId: draft.customer.id,
-        title: draft.title,
-        serviceType: draft.serviceType,
-        description: draft.description,
-        promisedResult: draft.promisedResult,
-        priority: draft.priority,
-        serviceMode: draft.serviceMode,
-        settlementMode: draft.settlementMode,
-        basePoints: draft.basePoints,
-        startedAt: draft.startedAt,
-        promisedAt: draft.promisedAt,
-        createdBy: creator.id,
-      }));
-      const savedParticipants = await manager.save(ServiceParticipant, draft.rawParticipants.map((item: any) => manager.create(ServiceParticipant, {
-        id: `sp-${randomUUID()}`,
-        serviceRecordId: recordId,
-        userId: String(item.userId),
-        participantRole: ['Service Owner', 'Primary Provider', 'Collaborator', 'On-Call Coordinator'].includes(item.participantRole) ? item.participantRole : 'Collaborator',
-        responsibility: String(item.responsibility || '').trim() || '按服务负责人安排完成服务工作',
-        contributionWeight: Number(item.contributionWeight),
-        workSummary: null,
-      })));
-      if (draft.rawLinks.length) {
-        await manager.save(ServiceMissionLink, draft.rawLinks.map((item: any) => manager.create(ServiceMissionLink, {
-          id: `sml-${randomUUID()}`,
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        savedRecord = await manager.save(ServiceRecord, manager.create(ServiceRecord, {
+          id: recordId,
+          customerId: draft.customer.id,
+          title: draft.title,
+          serviceType: draft.serviceType,
+          description: draft.description,
+          promisedResult: draft.promisedResult,
+          priority: draft.priority,
+          serviceMode: draft.serviceMode,
+          settlementMode: draft.settlementMode,
+          basePoints: draft.basePoints,
+          startedAt: draft.startedAt,
+          promisedAt: draft.promisedAt,
+          createdBy: creator.id,
+        }));
+        if (attachments.length) await manager.save(Attachment, attachments);
+        const savedParticipants = await manager.save(ServiceParticipant, draft.rawParticipants.map((item: any) => manager.create(ServiceParticipant, {
+          id: `sp-${randomUUID()}`,
           serviceRecordId: recordId,
-          missionId: String(item.missionId),
-          participantUserId: String(item.userId || savedParticipants[0].userId),
-          allocationWeight: Number(item.allocationWeight),
+          userId: String(item.userId),
+          participantRole: ['Service Owner', 'Primary Provider', 'Collaborator', 'On-Call Coordinator'].includes(item.participantRole) ? item.participantRole : 'Collaborator',
+          responsibility: String(item.responsibility || '').trim() || '按服务负责人安排完成服务工作',
+          contributionWeight: Number(item.contributionWeight),
+          workSummary: null,
         })));
-      }
-      const participantNames = draft.rawParticipants.map((p: any) => {
-        const u = draft.users.find((item) => item.id === String(p.userId));
-        return u ? u.name : '服务人员';
+        if (draft.rawLinks.length) {
+          await manager.save(ServiceMissionLink, draft.rawLinks.map((item: any) => manager.create(ServiceMissionLink, {
+            id: `sml-${randomUUID()}`,
+            serviceRecordId: recordId,
+            missionId: String(item.missionId),
+            participantUserId: String(item.userId || savedParticipants[0].userId),
+            allocationWeight: Number(item.allocationWeight),
+          })));
+        }
+        const participantNames = draft.rawParticipants.map((p: any) => {
+          const u = draft.users.find((item) => item.id === String(p.userId));
+          return u ? u.name : '服务人员';
+        });
+        const descSnippet = draft.description.length > 80 ? `${draft.description.slice(0, 80)}...` : draft.description;
+        await manager.save(Feed, manager.create(Feed, {
+          id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          type: 'service',
+          message: `【客户服务】${creator.name} 登记了客户“${draft.customer.name}”的服务事项“${draft.title}”（服务内容：${descSnippet}），服务人员：${participantNames.join('、')}。`,
+          timestamp: new Date(),
+        }));
       });
-      const descSnippet = draft.description.length > 80 ? `${draft.description.slice(0, 80)}...` : draft.description;
-      await manager.save(Feed, manager.create(Feed, {
-        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        type: 'service',
-        message: `【客户服务】${creator.name} 登记了客户“${draft.customer.name}”的服务事项“${draft.title}”（服务内容：${descSnippet}），服务人员：${participantNames.join('、')}。`,
-        timestamp: new Date(),
-      }));
-    });
+    } catch (error) {
+      await this.storageService.deleteObjects(attachments.map((item) => item.objectKey));
+      throw error;
+    }
 
     const participantDetails = draft.rawParticipants.map((item: any) => {
       const user = draft.users.find((u) => u.id === String(item.userId))!;
@@ -626,6 +644,29 @@ export class CustomerServiceService {
     const score = Number(value);
     if (!Number.isInteger(score) || score < 0 || score > 100) throw new BadRequestException('各评分项必须为 0 至 100 的整数');
     return score;
+  }
+
+  private parseArrayField(value: any) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      throw new BadRequestException('服务分配数据格式无效');
+    }
+  }
+
+  private serializeAttachment(attachment: Attachment) {
+    return {
+      id: attachment.id,
+      originalName: attachment.originalName,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+      isImage: attachment.isImage,
+      createdAt: attachment.createdAt,
+      url: `/api/attachments/${attachment.id}/content`,
+    };
   }
 
   private parseOptionalDate(value: any, label: string) {

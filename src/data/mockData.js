@@ -62,7 +62,10 @@ const deleteJson = async (path) => {
 
 const postForm = async (path, fields, files = []) => {
   const form = new FormData();
-  Object.entries(fields).forEach(([key, value]) => form.append(key, String(value ?? '')));
+  Object.entries(fields).forEach(([key, value]) => {
+    const serialized = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+    form.append(key, serialized);
+  });
   files.forEach(file => form.append('files', file));
   const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: authHeaders(), body: form });
   return parseResponse(res);
@@ -214,7 +217,7 @@ export const getServiceCenter = async () => {
 };
 
 export const createExternalCustomer = async (data) => postJson('/service-center/customers', data);
-export const createServiceRecord = async (data) => postJson('/service-center/records', data);
+export const createServiceRecord = async (data, files = []) => postForm('/service-center/records', data, files);
 export const updateServiceRecord = async (recordId, data) => putJson(`/service-center/records/${recordId}`, data);
 export const transitionServiceRecord = async (recordId, data) => postJson(`/service-center/records/${recordId}/transition`, data);
 export const addServiceFeedback = async (recordId, data) => postJson(`/service-center/records/${recordId}/feedback`, data);
