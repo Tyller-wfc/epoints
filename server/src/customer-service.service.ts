@@ -17,7 +17,8 @@ import { Mission } from './entities/mission.entity';
 import { ServiceMissionLink } from './entities/service-mission-link.entity';
 
 const TRANSITIONS: Record<string, string[]> = {
-  New: ['In Progress', 'Cancelled'],
+  New: ['Accepted', 'Returned', 'In Progress', 'Cancelled'],
+  Accepted: ['Pending Evaluation', 'Cancelled'],
   'In Progress': ['Pending Evaluation', 'Cancelled'],
   'Pending Evaluation': ['Reopened'],
   Reopened: ['Pending Evaluation', 'Cancelled'],
@@ -67,7 +68,7 @@ export class CustomerServiceService {
         if (requester.roleType === 'Admin') return true;
         const isParticipant = allParticipants.some((p) => p.serviceRecordId === item.id && p.userId === requesterId);
         
-        if (['New', 'In Progress', 'Reopened'].includes(item.status)) {
+        if (['New', 'Accepted', 'In Progress', 'Returned', 'Reopened'].includes(item.status)) {
           return isParticipant;
         }
         
@@ -135,15 +136,16 @@ export class CustomerServiceService {
     return this.getCenter(requesterId);
   }
 
-  async createRecord(requesterId: string, data: any, requestOrigin = '') {
+  private async validateRecordDraft(data: any) {
     await this.epointsService.autoUpdateActiveDuty();
-    const creator = await this.requireUser(requesterId);
     const customer = await this.customerRepo.findOne({ where: { id: String(data.customerId), enabled: true } });
     if (!customer) throw new BadRequestException('请选择有效客户');
+
     const title = String(data.title || '').trim();
     const description = String(data.description || '').trim();
     const promisedResult = String(data.promisedResult || '').trim();
     if (!title || !description || !promisedResult) throw new BadRequestException('标题、客户需求和承诺结果不能为空');
+
     const rawParticipants = Array.isArray(data.participants) ? data.participants : [];
     if (!rawParticipants.length) throw new BadRequestException('请至少指定一名内部服务人员');
     const userIds = [...new Set(rawParticipants.map((item: any) => String(item.userId || '')))];
@@ -155,46 +157,72 @@ export class CustomerServiceService {
       .getMany();
     if (users.length !== userIds.length) throw new BadRequestException('包含无效或停用的服务人员');
     if (users.some((item) => item.availability === 'Leave')) throw new BadRequestException('休假人员不能被分派服务');
+
     const weights = rawParticipants.map((item: any) => Number(item.contributionWeight));
     if (weights.some((item: number) => !Number.isInteger(item) || item < 1 || item > 100) || weights.reduce((sum: number, item: number) => sum + item, 0) !== 100) {
       throw new BadRequestException('参与人员贡献权重必须为整数且合计 100%');
     }
+
     const serviceMode = data.serviceMode === 'On Call' ? 'On Call' : 'Work Hours';
     const settlementMode = data.settlementMode === 'Mission Linked' ? 'Mission Linked' : 'Standalone';
     const rawLinks = Array.isArray(data.missionLinks) ? data.missionLinks : [];
     if (settlementMode === 'Mission Linked' && !rawLinks.length) throw new BadRequestException('任务关联服务至少需要关联一个内部任务');
     if (settlementMode === 'Standalone' && rawLinks.length) throw new BadRequestException('独立服务不能关联内部任务');
     if (rawLinks.length) {
-      const missionIds = [...new Set(rawLinks.map((item: any) => String(item.missionId || '')))].filter(Boolean);
+      const missionIds = rawLinks.map((item: any) => String(item.missionId || '')).filter(Boolean);
+      if (missionIds.length !== rawLinks.length || new Set(missionIds).size !== rawLinks.length) throw new BadRequestException('关联内部任务不能重复或为空');
       const missions = await this.missionRepo.find({ where: { id: In(missionIds) } });
       if (missions.length !== missionIds.length) throw new BadRequestException('包含不存在的内部任务');
       const linkWeights = rawLinks.map((item: any) => Number(item.allocationWeight));
       if (linkWeights.some((item: number) => !Number.isInteger(item) || item < 1 || item > 100) || linkWeights.reduce((sum: number, item: number) => sum + item, 0) !== 100) throw new BadRequestException('任务关联权重必须为整数且合计 100%');
     }
+
     if (serviceMode === 'On Call') {
       const coordinatorIds = rawParticipants.filter((item: any) => item.participantRole === 'On-Call Coordinator').map((item: any) => String(item.userId));
       const activeDuty = await this.dutyRepo.findOne({ where: { is_active: true } });
       if (!activeDuty || !coordinatorIds.includes(activeDuty.user_id)) throw new BadRequestException('非工作时间服务必须由当前值班人员担任协调人');
     }
+
+    return {
+      customer,
+      title: title.slice(0, 255),
+      serviceType: String(data.serviceType || '咨询支持').trim().slice(0, 80),
+      description,
+      promisedResult,
+      priority: ['P0', 'P1', 'P2', 'P3', 'Normal'].includes(data.priority) ? data.priority : 'Normal',
+      serviceMode,
+      settlementMode,
+      basePoints: Math.min(1000, Math.max(0, Number(data.basePoints) || 100)),
+      startedAt: this.parseOptionalDate(data.startedAt, '服务开始时间'),
+      promisedAt: this.parseOptionalDate(data.promisedAt, '服务结束时间'),
+      rawParticipants,
+      users,
+      rawLinks,
+    };
+  }
+
+  async createRecord(requesterId: string, data: any, requestOrigin = '') {
+    const creator = await this.requireUser(requesterId);
+    const draft = await this.validateRecordDraft(data);
     const recordId = `sr-${randomUUID()}`;
     let savedRecord: ServiceRecord | null = null;
     await this.dataSource.transaction(async (manager) => {
       savedRecord = await manager.save(ServiceRecord, manager.create(ServiceRecord, {
         id: recordId,
-        customerId: customer.id,
-        title: title.slice(0, 255),
-        serviceType: String(data.serviceType || '咨询支持').trim().slice(0, 80),
-        description,
-        promisedResult,
-        priority: ['P0', 'P1', 'P2', 'P3', 'Normal'].includes(data.priority) ? data.priority : 'Normal',
-        serviceMode,
-        settlementMode,
-        basePoints: Math.min(1000, Math.max(0, Number(data.basePoints) || 100)),
-        startedAt: data.startedAt ? new Date(data.startedAt) : null,
-        promisedAt: data.promisedAt ? new Date(data.promisedAt) : null,
+        customerId: draft.customer.id,
+        title: draft.title,
+        serviceType: draft.serviceType,
+        description: draft.description,
+        promisedResult: draft.promisedResult,
+        priority: draft.priority,
+        serviceMode: draft.serviceMode,
+        settlementMode: draft.settlementMode,
+        basePoints: draft.basePoints,
+        startedAt: draft.startedAt,
+        promisedAt: draft.promisedAt,
         createdBy: creator.id,
       }));
-      const savedParticipants = await manager.save(ServiceParticipant, rawParticipants.map((item: any) => manager.create(ServiceParticipant, {
+      const savedParticipants = await manager.save(ServiceParticipant, draft.rawParticipants.map((item: any) => manager.create(ServiceParticipant, {
         id: `sp-${randomUUID()}`,
         serviceRecordId: recordId,
         userId: String(item.userId),
@@ -203,8 +231,8 @@ export class CustomerServiceService {
         contributionWeight: Number(item.contributionWeight),
         workSummary: null,
       })));
-      if (rawLinks.length) {
-        await manager.save(ServiceMissionLink, rawLinks.map((item: any) => manager.create(ServiceMissionLink, {
+      if (draft.rawLinks.length) {
+        await manager.save(ServiceMissionLink, draft.rawLinks.map((item: any) => manager.create(ServiceMissionLink, {
           id: `sml-${randomUUID()}`,
           serviceRecordId: recordId,
           missionId: String(item.missionId),
@@ -212,21 +240,21 @@ export class CustomerServiceService {
           allocationWeight: Number(item.allocationWeight),
         })));
       }
-      const participantNames = rawParticipants.map((p: any) => {
-        const u = users.find((item) => item.id === String(p.userId));
+      const participantNames = draft.rawParticipants.map((p: any) => {
+        const u = draft.users.find((item) => item.id === String(p.userId));
         return u ? u.name : '服务人员';
       });
-      const descSnippet = description.length > 80 ? `${description.slice(0, 80)}...` : description;
+      const descSnippet = draft.description.length > 80 ? `${draft.description.slice(0, 80)}...` : draft.description;
       await manager.save(Feed, manager.create(Feed, {
         id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         type: 'service',
-        message: `【客户服务】${creator.name} 登记了客户“${customer.name}”的服务事项“${title}”（服务内容：${descSnippet}），服务人员：${participantNames.join('、')}。`,
+        message: `【客户服务】${creator.name} 登记了客户“${draft.customer.name}”的服务事项“${draft.title}”（服务内容：${descSnippet}），服务人员：${participantNames.join('、')}。`,
         timestamp: new Date(),
       }));
     });
 
-    const participantDetails = rawParticipants.map((item: any) => {
-      const user = users.find((u) => u.id === String(item.userId))!;
+    const participantDetails = draft.rawParticipants.map((item: any) => {
+      const user = draft.users.find((u) => u.id === String(item.userId))!;
       const phone = user.phoneEncrypted ? this.piiService.decrypt(user.phoneEncrypted) : undefined;
       return {
         user,
@@ -240,7 +268,7 @@ export class CustomerServiceService {
       try {
         await this.epointsService.sendServiceWecomNotification(
           savedRecord,
-          customer,
+          draft.customer,
           creator.name,
           participantDetails,
           requestOrigin,
@@ -248,7 +276,101 @@ export class CustomerServiceService {
       } catch (error) {
         const message = error instanceof Error ? error.message : '未知错误';
         console.error('WeCom service notification failed:', error);
-        await this.epointsService.pushFeed('system', `【企业微信通知失败】服务“${title}”已登记，但消息推送失败：${message}`);
+        await this.epointsService.pushFeed('system', `【企业微信通知失败】服务“${draft.title}”已登记，但消息推送失败：${message}`);
+      }
+    }
+
+    return this.getCenter(requesterId);
+  }
+
+  async updateReturnedRecord(requesterId: string, recordId: string, data: any, requestOrigin = '') {
+    await this.assertAdmin(requesterId);
+    const record = await this.requireRecord(recordId);
+    if (record.status !== 'Returned') throw new BadRequestException('只有已退回的服务记录可以修改后重新分配');
+    const admin = await this.requireUser(requesterId);
+    const draft = await this.validateRecordDraft(data);
+    let savedRecord: ServiceRecord | null = null;
+
+    await this.dataSource.transaction(async (manager) => {
+      record.customerId = draft.customer.id;
+      record.title = draft.title;
+      record.serviceType = draft.serviceType;
+      record.description = draft.description;
+      record.promisedResult = draft.promisedResult;
+      record.priority = draft.priority;
+      record.serviceMode = draft.serviceMode;
+      record.settlementMode = draft.settlementMode;
+      record.basePoints = draft.basePoints;
+      record.startedAt = draft.startedAt;
+      record.promisedAt = draft.promisedAt;
+      record.completedAt = null;
+      record.customerConfirmedAt = null;
+      record.resultSummary = null;
+      record.returnReason = null;
+      record.returnedAt = null;
+      record.customerSatisfaction = null;
+      record.status = 'New';
+
+      savedRecord = await manager.save(ServiceRecord, record);
+      await manager.delete(ServiceMissionLink, { serviceRecordId: record.id });
+      await manager.delete(ServiceParticipant, { serviceRecordId: record.id });
+
+      const savedParticipants = await manager.save(ServiceParticipant, draft.rawParticipants.map((item: any) => manager.create(ServiceParticipant, {
+        id: `sp-${randomUUID()}`,
+        serviceRecordId: record.id,
+        userId: String(item.userId),
+        participantRole: ['Service Owner', 'Primary Provider', 'Collaborator', 'On-Call Coordinator'].includes(item.participantRole) ? item.participantRole : 'Collaborator',
+        responsibility: String(item.responsibility || '').trim() || '按服务负责人安排完成服务工作',
+        contributionWeight: Number(item.contributionWeight),
+        workSummary: null,
+      })));
+
+      if (draft.rawLinks.length) {
+        await manager.save(ServiceMissionLink, draft.rawLinks.map((item: any) => manager.create(ServiceMissionLink, {
+          id: `sml-${randomUUID()}`,
+          serviceRecordId: record.id,
+          missionId: String(item.missionId),
+          participantUserId: String(item.userId || savedParticipants[0].userId),
+          allocationWeight: Number(item.allocationWeight),
+        })));
+      }
+
+      const participantNames = draft.rawParticipants.map((p: any) => {
+        const u = draft.users.find((item) => item.id === String(p.userId));
+        return u ? u.name : '服务人员';
+      });
+      await manager.save(Feed, manager.create(Feed, {
+        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'service',
+        message: `【客户服务重派】管理员 ${admin.name} 修改并重新分配了服务“${draft.title}”，服务人员：${participantNames.join('、')}。`,
+        timestamp: new Date(),
+      }));
+    });
+
+    const participantDetails = draft.rawParticipants.map((item: any) => {
+      const user = draft.users.find((u) => u.id === String(item.userId))!;
+      const phone = user.phoneEncrypted ? this.piiService.decrypt(user.phoneEncrypted) : undefined;
+      return {
+        user,
+        role: item.participantRole,
+        weight: Number(item.contributionWeight),
+        phone,
+      };
+    });
+
+    if (savedRecord) {
+      try {
+        await this.epointsService.sendServiceWecomNotification(
+          savedRecord,
+          draft.customer,
+          admin.name,
+          participantDetails,
+          requestOrigin,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        console.error('WeCom service reassignment notification failed:', error);
+        await this.epointsService.pushFeed('system', `【企业微信通知失败】服务“${draft.title}”已重新分配，但消息推送失败：${message}`);
       }
     }
 
@@ -259,7 +381,7 @@ export class CustomerServiceService {
     const record = await this.requireRecord(recordId);
     const nextStatus = String(data.status || '');
     
-    if (['In Progress', 'Pending Evaluation'].includes(nextStatus)) {
+    if (['Accepted', 'Returned', 'In Progress', 'Pending Evaluation'].includes(nextStatus)) {
       const isParticipant = await this.participantRepo.exists({ where: { serviceRecordId: record.id, userId: requesterId } });
       if (!isParticipant) throw new ForbiddenException('只允许指派的服务负责人操作此流转');
     } else if (nextStatus === 'Reopened') {
@@ -270,9 +392,22 @@ export class CustomerServiceService {
     
     if (!(TRANSITIONS[record.status] || []).includes(nextStatus)) throw new BadRequestException(`不能从 ${record.status} 转为 ${nextStatus}`);
     if (nextStatus === 'Pending Evaluation' && !String(data.resultSummary || '').trim()) throw new BadRequestException('完成服务时必须填写结果摘要');
+    if (nextStatus === 'Returned' && !String(data.returnReason || '').trim()) throw new BadRequestException('退回服务时必须填写原因');
     
     record.status = nextStatus;
-    if (nextStatus === 'In Progress' && !record.startedAt) record.startedAt = new Date();
+    if (['Accepted', 'In Progress'].includes(nextStatus)) {
+      if (!record.startedAt) record.startedAt = new Date();
+      record.returnReason = null;
+      record.returnedAt = null;
+    }
+    if (nextStatus === 'Returned') {
+      record.returnReason = String(data.returnReason).trim();
+      record.returnedAt = new Date();
+      record.completedAt = null;
+      record.customerConfirmedAt = null;
+      record.resultSummary = null;
+      record.customerSatisfaction = null;
+    }
     if (nextStatus === 'Pending Evaluation') {
       record.completedAt = new Date();
       record.resultSummary = String(data.resultSummary).trim();
@@ -491,6 +626,14 @@ export class CustomerServiceService {
     const score = Number(value);
     if (!Number.isInteger(score) || score < 0 || score > 100) throw new BadRequestException('各评分项必须为 0 至 100 的整数');
     return score;
+  }
+
+  private parseOptionalDate(value: any, label: string) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const date = new Date(raw);
+    if (isNaN(date.getTime())) throw new BadRequestException(`${label}格式无效`);
+    return date;
   }
 
   private async requireUser(userId: string) {

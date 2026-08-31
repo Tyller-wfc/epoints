@@ -1,5 +1,4 @@
 import { calculateMissionAdjustment, calculateServicePoints, calculateServiceScore, CustomerServiceService } from './customer-service.service';
-import { CustomerServiceController } from './customer-service.controller';
 
 describe('customer service scoring rules', () => {
   it('weights customer outcome highest', () => {
@@ -24,6 +23,7 @@ describe('customer service scoring rules', () => {
 
 describe('CustomerServiceService createRecord notifications', () => {
   let service: CustomerServiceService;
+  let lastTransactionManager: any;
   const mockCustomerRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -67,11 +67,12 @@ describe('CustomerServiceService createRecord notifications', () => {
   };
   const mockDataSource = {
     transaction: jest.fn(async (callback) => {
-      const manager = {
+      lastTransactionManager = {
         save: jest.fn((_entityClass, entity) => Promise.resolve(entity)),
         create: jest.fn((_entityClass, entity) => entity),
+        delete: jest.fn(() => Promise.resolve()),
       };
-      return callback(manager);
+      return callback(lastTransactionManager);
     }),
   };
   const mockEpointsService = {
@@ -82,6 +83,10 @@ describe('CustomerServiceService createRecord notifications', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    lastTransactionManager = null;
+    mockEpointsService.autoUpdateActiveDuty.mockResolvedValue(undefined);
+    mockEpointsService.sendServiceWecomNotification.mockResolvedValue(undefined);
+    mockEpointsService.pushFeed.mockResolvedValue(undefined);
     service = new CustomerServiceService(
       mockCustomerRepo as any,
       mockRecordRepo as any,
@@ -98,6 +103,20 @@ describe('CustomerServiceService createRecord notifications', () => {
       mockEpointsService as any,
     );
   });
+
+  const mockEmptyCenter = (requester: any, users: any[] = [requester]) => {
+    mockUserRepo.findOne.mockResolvedValue(requester);
+    mockParticipantRepo.find.mockResolvedValue([]);
+    mockRecordRepo.find.mockResolvedValue([]);
+    mockCustomerRepo.createQueryBuilder.mockReturnValue({
+      addSelect: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    });
+    mockUserRepo.find.mockResolvedValue(users);
+    mockLedgerRepo.find.mockResolvedValue([]);
+    mockDutyRepo.findOne.mockResolvedValue(null);
+    mockMissionRepo.find.mockResolvedValue([]);
+  };
 
   it('sends WeCom notification to service participants on createRecord', async () => {
     const creatorUser = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
@@ -185,6 +204,7 @@ describe('CustomerServiceService createRecord notifications', () => {
     mockMissionRepo.find.mockResolvedValue([]);
 
     mockEpointsService.sendServiceWecomNotification.mockRejectedValue(new Error('Webhook 网络连接超时'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const payload = {
       customerId: 'c-1',
@@ -200,11 +220,120 @@ describe('CustomerServiceService createRecord notifications', () => {
       ],
     };
 
-    const result = await service.createRecord('u-2', payload);
-    expect(result).toBeDefined();
-    expect(mockEpointsService.pushFeed).toHaveBeenCalledWith(
-      'system',
-      expect.stringContaining('【企业微信通知失败】服务“日常运维答疑”已登记，但消息推送失败：Webhook 网络连接超时'),
-    );
+    try {
+      const result = await service.createRecord('u-2', payload);
+      expect(result).toBeDefined();
+      expect(mockEpointsService.pushFeed).toHaveBeenCalledWith(
+        'system',
+        expect.stringContaining('【企业微信通知失败】服务“日常运维答疑”已登记，但消息推送失败：Webhook 网络连接超时'),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('allows the assigned participant to accept a newly assigned service record', async () => {
+    const participant = { id: 'u-3', name: '张工', roleType: 'Engineer', enabled: true };
+    const record = { id: 'sr-1', status: 'New', startedAt: null, returnReason: '旧原因', returnedAt: new Date() };
+    mockRecordRepo.findOne.mockResolvedValue(record);
+    mockParticipantRepo.exists.mockResolvedValue(true);
+    mockRecordRepo.save.mockImplementation(async (item) => item);
+    mockEmptyCenter(participant);
+
+    await service.transitionRecord('u-3', 'sr-1', { status: 'Accepted' });
+
+    expect(record.status).toBe('Accepted');
+    expect(record.startedAt).toBeInstanceOf(Date);
+    expect(record.returnReason).toBeNull();
+    expect(record.returnedAt).toBeNull();
+    expect(mockRecordRepo.save).toHaveBeenCalledWith(record);
+  });
+
+  it('allows the assigned participant to return a service record with a reason', async () => {
+    const participant = { id: 'u-3', name: '张工', roleType: 'Engineer', enabled: true };
+    const record = {
+      id: 'sr-1',
+      status: 'New',
+      completedAt: new Date(),
+      customerConfirmedAt: new Date(),
+      resultSummary: '旧结果',
+      returnReason: null,
+      returnedAt: null,
+      customerSatisfaction: 'Satisfied',
+    };
+    mockRecordRepo.findOne.mockResolvedValue(record);
+    mockParticipantRepo.exists.mockResolvedValue(true);
+    mockRecordRepo.save.mockImplementation(async (item) => item);
+    mockEmptyCenter(participant);
+
+    await service.transitionRecord('u-3', 'sr-1', { status: 'Returned', returnReason: '需要数据库权限人员处理' });
+
+    expect(record.status).toBe('Returned');
+    expect(record.returnReason).toBe('需要数据库权限人员处理');
+    expect(record.returnedAt).toBeInstanceOf(Date);
+    expect(record.completedAt).toBeNull();
+    expect(record.customerConfirmedAt).toBeNull();
+    expect(record.resultSummary).toBeNull();
+    expect(record.customerSatisfaction).toBeNull();
+  });
+
+  it('lets an admin edit a returned record and reassign it back to pending acceptance', async () => {
+    const admin = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+    const participantUser = { id: 'u-4', name: '李工', phoneEncrypted: 'enc-13900139000', enabled: true, availability: 'Available' };
+    const customer = { id: 'c-1', name: '某某科技有限公司', organization: '技术部', enabled: true };
+    const record = {
+      id: 'sr-1',
+      customerId: 'c-old',
+      title: '旧标题',
+      serviceType: '咨询支持',
+      description: '旧需求',
+      promisedResult: '旧承诺',
+      priority: 'P3',
+      serviceMode: 'Work Hours',
+      settlementMode: 'Standalone',
+      basePoints: 100,
+      startedAt: null,
+      promisedAt: null,
+      completedAt: null,
+      customerConfirmedAt: null,
+      resultSummary: null,
+      returnReason: '人员不匹配',
+      returnedAt: new Date(),
+      customerSatisfaction: null,
+      status: 'Returned',
+    };
+    mockUserRepo.findOne.mockResolvedValue(admin);
+    mockRecordRepo.findOne.mockResolvedValue(record);
+    mockCustomerRepo.findOne.mockResolvedValue(customer);
+    mockUserRepo.createQueryBuilder.mockReturnValue({
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([participantUser]),
+    });
+    mockEmptyCenter(admin, [admin, participantUser]);
+
+    await service.updateReturnedRecord('u-2', 'sr-1', {
+      customerId: 'c-1',
+      title: '重新分配后的服务',
+      serviceType: '运维保障',
+      description: '更新后的客户需求',
+      promisedResult: '更新后的交付承诺',
+      priority: 'P1',
+      serviceMode: 'Work Hours',
+      settlementMode: 'Standalone',
+      basePoints: 150,
+      participants: [
+        { userId: 'u-4', participantRole: 'Service Owner', contributionWeight: 100, responsibility: '重新负责交付' },
+      ],
+    });
+
+    expect(record.status).toBe('New');
+    expect(record.title).toBe('重新分配后的服务');
+    expect(record.customerId).toBe('c-1');
+    expect(record.returnReason).toBeNull();
+    expect(record.returnedAt).toBeNull();
+    expect(lastTransactionManager.delete).toHaveBeenCalledWith(expect.anything(), { serviceRecordId: 'sr-1' });
+    expect(mockEpointsService.sendServiceWecomNotification).toHaveBeenCalledTimes(1);
   });
 });

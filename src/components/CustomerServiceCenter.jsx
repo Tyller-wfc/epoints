@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Award, BriefcaseBusiness, CalendarPlus, Check, CheckCircle2, Clock3, Headphones, MessageSquareText, Plus, ShieldCheck, UserRoundCheck, UsersRound } from 'lucide-react';
+import { Award, BriefcaseBusiness, CalendarPlus, Check, CheckCircle2, Clock3, Headphones, MessageSquareText, Pencil, Plus, RotateCcw, ShieldCheck, UserRoundCheck, UsersRound, XCircle } from 'lucide-react';
 import {
   addServiceFeedback,
   createExternalCustomer,
   createServiceRecord,
   getServiceCenter,
   transitionServiceRecord,
+  updateServiceRecord,
 } from '../data/mockData';
 
 const toLocalDateString = (d) => {
@@ -45,9 +46,17 @@ const formatDate = (timeInput) => {
   }
 };
 
+const formatPoints = (value) => `${Number(value || 0).toLocaleString('zh-CN')} eP`;
+
+const formatSignedPoints = (value) => {
+  const points = Number(value || 0);
+  if (points === 0) return '0 eP';
+  return `${points > 0 ? '+' : '-'}${formatPoints(Math.abs(points))}`;
+};
+
 const statusLabels = {
   New: '待受理', Accepted: '已受理', 'In Progress': '服务中',
-  Completed: '已完成', 'Pending Evaluation': '待评价', Evaluated: '已评价', Reopened: '返工中', Cancelled: '已取消',
+  Returned: '已退回', Completed: '已完成', 'Pending Evaluation': '待评价', Evaluated: '已评价', Reopened: '返工中', Cancelled: '已取消',
 };
 
 const sourceTypeLabels = {
@@ -67,15 +76,18 @@ const participantRoleLabels = {
 };
 
 const nextActions = {
-  New: ['In Progress'],
+  New: ['Accepted', 'Returned'],
+  Accepted: ['Pending Evaluation'],
   'In Progress': ['Pending Evaluation'],
   'Pending Evaluation': ['Reopened'],
   Reopened: ['Pending Evaluation'],
 };
 
 const transitionLabels = {
+  Accepted: '受理',
+  Returned: '退回',
   'In Progress': '已受理',
-  'Pending Evaluation': '已完成',
+  'Pending Evaluation': '提交成果',
   Reopened: '返工',
 };
 
@@ -93,6 +105,12 @@ export default function CustomerServiceCenter({ showToast }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedMissions, setSelectedMissions] = useState([]);
   const [settlementMode, setSettlementMode] = useState('Standalone');
+  const [editingRecordId, setEditingRecordId] = useState(null);
+  const [editStartedAt, setEditStartedAt] = useState('');
+  const [editPromisedAt, setEditPromisedAt] = useState('');
+  const [editSelectedUsers, setEditSelectedUsers] = useState([]);
+  const [editSelectedMissions, setEditSelectedMissions] = useState([]);
+  const [editSettlementMode, setEditSettlementMode] = useState('Standalone');
 
   const handleQuickOneMonth = () => {
     let baseDate;
@@ -127,6 +145,17 @@ export default function CustomerServiceCenter({ showToast }) {
     }
   }, [settlementMode]);
 
+  useEffect(() => {
+    if (editingRecordId && selectedId !== editingRecordId) {
+      setEditingRecordId(null);
+      setEditStartedAt('');
+      setEditPromisedAt('');
+      setEditSelectedUsers([]);
+      setEditSelectedMissions([]);
+      setEditSettlementMode('Standalone');
+    }
+  }, [editingRecordId, selectedId]);
+
   const load = async () => {
     try {
       const result = await getServiceCenter();
@@ -152,7 +181,7 @@ export default function CustomerServiceCenter({ showToast }) {
 
   const activeRecords = useMemo(() => {
     return (data?.records || []).filter(
-      (record) => ['New', 'Accepted', 'In Progress', 'Reopened', 'Pending Evaluation'].includes(record.status)
+      (record) => ['New', 'Accepted', 'In Progress', 'Returned', 'Reopened', 'Pending Evaluation'].includes(record.status)
     );
   }, [data]);
 
@@ -184,6 +213,28 @@ export default function CustomerServiceCenter({ showToast }) {
     }
   };
 
+  const buildRecordPayload = (form, pickedUsers, pickedMissions) => {
+    if (!pickedUsers.length) return { error: '请至少选择一名服务人员' };
+    const baseWeight = Math.floor(100 / pickedUsers.length);
+    const isOnCall = form.get('serviceMode') === 'On Call';
+    const nextSettlementMode = form.get('settlementMode') === 'Mission Linked' ? 'Mission Linked' : 'Standalone';
+    if (isOnCall && !pickedUsers.includes(data.activeDutyUserId)) return { error: '非工作时间服务必须选择当前值班人员' };
+    if (nextSettlementMode === 'Mission Linked' && !pickedMissions.length) return { error: '任务关联服务至少选择一个内部任务' };
+    const participantsPayload = pickedUsers.map((userId, index) => ({
+      userId,
+      participantRole: isOnCall && userId === data.activeDutyUserId ? 'On-Call Coordinator' : index === 0 ? 'Service Owner' : 'Collaborator',
+      responsibility: isOnCall && userId === data.activeDutyUserId ? '负责非工作时间受理、分级、协调、升级和交接' : index === 0 ? '负责客户沟通、服务结果与整体协调' : '按分工完成专业协作',
+      contributionWeight: baseWeight + (index === 0 ? 100 - baseWeight * pickedUsers.length : 0),
+    }));
+    const missionWeight = pickedMissions.length ? Math.floor(100 / pickedMissions.length) : 0;
+    const missionLinks = pickedMissions.map((missionId, index) => ({
+      missionId,
+      userId: pickedUsers[0],
+      allocationWeight: missionWeight + (index === 0 ? 100 - missionWeight * pickedMissions.length : 0),
+    }));
+    return { payload: { ...Object.fromEntries(form), settlementMode: nextSettlementMode, participants: participantsPayload, missionLinks } };
+  };
+
   if (!data) return <div className="glass-panel service-loading">正在载入客户服务台账...</div>;
 
   const handleCreateCustomer = async (event) => {
@@ -201,25 +252,8 @@ export default function CustomerServiceCenter({ showToast }) {
     event.preventDefault();
     const formEl = event.currentTarget;
     const form = new FormData(formEl);
-    if (!selectedUsers.length) return setError('请至少选择一名服务人员');
-    const baseWeight = Math.floor(100 / selectedUsers.length);
-    const isOnCall = form.get('serviceMode') === 'On Call';
-    const settlementMode = form.get('settlementMode') === 'Mission Linked' ? 'Mission Linked' : 'Standalone';
-    if (isOnCall && !selectedUsers.includes(data.activeDutyUserId)) return setError('非工作时间服务必须选择当前值班人员');
-    if (settlementMode === 'Mission Linked' && !selectedMissions.length) return setError('任务关联服务至少选择一个内部任务');
-    const participantsPayload = selectedUsers.map((userId, index) => ({
-      userId,
-      participantRole: isOnCall && userId === data.activeDutyUserId ? 'On-Call Coordinator' : index === 0 ? 'Service Owner' : 'Collaborator',
-      responsibility: isOnCall && userId === data.activeDutyUserId ? '负责非工作时间受理、分级、协调、升级和交接' : index === 0 ? '负责客户沟通、服务结果与整体协调' : '按分工完成专业协作',
-      contributionWeight: baseWeight + (index === 0 ? 100 - baseWeight * selectedUsers.length : 0),
-    }));
-    const missionWeight = selectedMissions.length ? Math.floor(100 / selectedMissions.length) : 0;
-    const missionLinks = selectedMissions.map((missionId, index) => ({
-      missionId,
-      userId: selectedUsers[0],
-      allocationWeight: missionWeight + (index === 0 ? 100 - missionWeight * selectedMissions.length : 0),
-    }));
-    const payload = { ...Object.fromEntries(form), settlementMode, participants: participantsPayload, missionLinks };
+    const { error: payloadError, payload } = buildRecordPayload(form, selectedUsers, selectedMissions);
+    if (payloadError) return setError(payloadError);
     if (await submit(() => createServiceRecord(payload))) {
       formEl.reset();
       setRecordStartedAt('');
@@ -229,6 +263,38 @@ export default function CustomerServiceCenter({ showToast }) {
       setSettlementMode('Standalone');
       setShowRecordForm(false);
       showToast?.('success', `服务记录“${payload.title}”创建成功，已提醒服务人 ✓`);
+    }
+  };
+
+  const startReturnedRecordEdit = () => {
+    if (!selected) return;
+    setShowRecordForm(false);
+    setEditingRecordId(selected.id);
+    setEditStartedAt(formatDate(selected.startedAt) || '');
+    setEditPromisedAt(formatDate(selected.promisedAt) || '');
+    setEditSettlementMode(selected.settlementMode === 'Mission Linked' ? 'Mission Linked' : 'Standalone');
+    setEditSelectedUsers(participants.map((item) => item.userId));
+    setEditSelectedMissions(missionLinks.map((item) => item.missionId));
+  };
+
+  const resetReturnedRecordEdit = () => {
+    setEditingRecordId(null);
+    setEditStartedAt('');
+    setEditPromisedAt('');
+    setEditSelectedUsers([]);
+    setEditSelectedMissions([]);
+    setEditSettlementMode('Standalone');
+  };
+
+  const handleUpdateReturnedRecord = async (event) => {
+    event.preventDefault();
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
+    const { error: payloadError, payload } = buildRecordPayload(form, editSelectedUsers, editSelectedMissions);
+    if (payloadError) return setError(payloadError);
+    if (await submit(() => updateServiceRecord(editingRecordId, payload))) {
+      resetReturnedRecordEdit();
+      showToast?.('success', `服务记录“${payload.title}”已修改并重新分配 ✓`);
     }
   };
 
@@ -294,6 +360,7 @@ export default function CustomerServiceCenter({ showToast }) {
             <option>P1</option>
             <option>P2</option>
             <option>P3</option>
+            <option value="Normal">普通</option>
           </select>
           <select className="cyber-select" name="serviceMode" defaultValue="Work Hours"><option value="Work Hours">工作时间服务</option><option value="On Call">非工作时间值班服务</option></select>
           <div className="service-field-group">
@@ -323,7 +390,7 @@ export default function CustomerServiceCenter({ showToast }) {
               onClick={(e) => {
                 try {
                   e.currentTarget.showPicker();
-                } catch (_) {}
+                } catch {}
               }}
             />
           </div>
@@ -348,7 +415,7 @@ export default function CustomerServiceCenter({ showToast }) {
               onClick={(e) => {
                 try {
                   e.currentTarget.showPicker();
-                } catch (_) {}
+                } catch {}
               }}
             />
           </div>
@@ -465,6 +532,20 @@ export default function CustomerServiceCenter({ showToast }) {
                   text={`${selected.startedAt ? formatDate(selected.startedAt) : '登记即开始'} 至 ${selected.promisedAt ? formatDate(selected.promisedAt) : '无明确截止'}`} 
                 />
               )}
+              <ServicePointsDetail
+                record={selected}
+                participants={participants}
+                evaluations={evaluations}
+                missionLinks={missionLinks}
+                missionById={missionById}
+                userById={userById}
+              />
+              {selected.returnReason && (
+                <Detail
+                  label="退回原因"
+                  text={`${selected.returnReason}${selected.returnedAt ? `\n退回时间：${formatTime(selected.returnedAt)}` : ''}`}
+                />
+              )}
               {selected.resultSummary && <Detail label="服务结果" text={selected.resultSummary} />}
               <div className="service-participant-list">
                 <strong>内部服务人员</strong>
@@ -475,6 +556,37 @@ export default function CustomerServiceCenter({ showToast }) {
               </div>
               {selected.settlementMode === 'Mission Linked' && <div className="service-participant-list"><strong>关联任务及权重</strong>{missionLinks.map((link) => <div key={link.id}><span>{missionById.get(link.missionId)?.title || link.missionId}<small>服务影响权重 {link.allocationWeight}%</small></span><b>任务 ePoints 调整</b></div>)}</div>}
             </div>
+
+            {data.canManage && selected.status === 'Returned' && (
+              <section className="service-return-admin">
+                <div className="service-section-title">
+                  <h3><RotateCcw size={17} /> 退回后重派</h3>
+                  {editingRecordId !== selected.id && (
+                    <button className="cyber-btn" onClick={startReturnedRecordEdit}><Pencil size={15} /> 修改并重新分配</button>
+                  )}
+                </div>
+                {editingRecordId !== selected.id && <p className="service-muted">该服务已被指派人员退回，管理员可修改内容或服务人员后重新分配。</p>}
+                {editingRecordId === selected.id && (
+                  <ReturnedRecordEditForm
+                    data={data}
+                    record={selected}
+                    busy={busy}
+                    startedAt={editStartedAt}
+                    promisedAt={editPromisedAt}
+                    selectedUsers={editSelectedUsers}
+                    selectedMissions={editSelectedMissions}
+                    settlementMode={editSettlementMode}
+                    setStartedAt={setEditStartedAt}
+                    setPromisedAt={setEditPromisedAt}
+                    setSelectedUsers={setEditSelectedUsers}
+                    setSelectedMissions={setEditSelectedMissions}
+                    setSettlementMode={setEditSettlementMode}
+                    onSubmit={handleUpdateReturnedRecord}
+                    onCancel={resetReturnedRecordEdit}
+                  />
+                )}
+              </section>
+            )}
 
             <ServiceTimeline
               record={selected}
@@ -489,6 +601,10 @@ export default function CustomerServiceCenter({ showToast }) {
                 if (success) {
                   if (payload.status === 'Pending Evaluation') {
                     showToast?.('success', '交付成果已成功提交，等待客户确认/管理员评价 ✓');
+                  } else if (payload.status === 'Accepted') {
+                    showToast?.('success', '服务已受理 ✓');
+                  } else if (payload.status === 'Returned') {
+                    showToast?.('success', '服务已退回，等待管理员修改后重新分配 ✓');
                   } else {
                     showToast?.('success', '服务状态更新成功 ✓');
                   }
@@ -525,13 +641,192 @@ function Detail({ label, text }) {
   return <div className="service-detail-block"><strong>{label}</strong><p>{text}</p></div>;
 }
 
-function TransitionButton({ status, busy, onClickCompleted, onSubmit }) {
+function ServicePointsDetail({ record, participants, evaluations, missionLinks, missionById, userById }) {
+  const participantIds = new Set(participants.map((item) => item.id));
+  const recordEvaluations = evaluations.filter((item) => participantIds.has(item.participantId));
+  const settledPoints = recordEvaluations.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0);
+  const linkedMissionBase = missionLinks.reduce((sum, link) => sum + Number(missionById.get(link.missionId)?.base_points || 0), 0);
+  const isMissionLinked = record.settlementMode === 'Mission Linked';
+  const settledLabel = recordEvaluations.length ? formatSignedPoints(settledPoints) : '待评价';
+  const participantLabel = participants.length
+    ? participants.map((item) => `${userById.get(item.userId)?.name || '服务人员'} ${item.contributionWeight}%`).join('、')
+    : '未分配';
+
+  return (
+    <div className="service-detail-block service-points-detail">
+      <strong>积分情况</strong>
+      <div className="service-points-summary">
+        <span>
+          <small>基础积分</small>
+          <b>{formatPoints(record.basePoints)}</b>
+        </span>
+        <span>
+          <small>{isMissionLinked ? '当前调整' : '当前结算'}</small>
+          <b className={settledPoints < 0 ? 'negative' : ''}>{settledLabel}</b>
+        </span>
+        <span>
+          <small>结算方式</small>
+          <em>{isMissionLinked ? '关联任务调整' : '独立服务积分'}</em>
+        </span>
+        <span>
+          <small>{isMissionLinked ? '关联任务基础' : '服务人员'}</small>
+          <em>{isMissionLinked ? formatPoints(linkedMissionBase) : participantLabel}</em>
+        </span>
+      </div>
+      <p>{recordEvaluations.length ? '已按客户反馈完成积分核算。' : '当前服务尚未评价，积分将在客户反馈记录后自动核算。'}</p>
+    </div>
+  );
+}
+
+function ReturnedRecordEditForm({
+  data,
+  record,
+  busy,
+  startedAt,
+  promisedAt,
+  selectedUsers,
+  selectedMissions,
+  settlementMode,
+  setStartedAt,
+  setPromisedAt,
+  setSelectedUsers,
+  setSelectedMissions,
+  setSettlementMode,
+  onSubmit,
+  onCancel,
+}) {
+  const handleQuickOneMonth = () => {
+    let baseDate;
+    if (startedAt) {
+      const parts = startedAt.split('-').map(Number);
+      if (parts.length === 3 && !isNaN(parts[0])) {
+        baseDate = new Date(parts[0], parts[1] - 1, parts[2]);
+      } else {
+        baseDate = new Date(startedAt);
+      }
+      if (isNaN(baseDate.getTime())) baseDate = new Date();
+    } else {
+      baseDate = new Date();
+      setStartedAt(toLocalDateString(baseDate));
+    }
+    const end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+    const originalDay = end.getDate();
+    end.setMonth(end.getMonth() + 1);
+    if (end.getDate() !== originalDay && end.getMonth() % 12 !== (baseDate.getMonth() + 1) % 12) {
+      end.setDate(0);
+    }
+    setPromisedAt(toLocalDateString(end));
+  };
+
+  const selectUser = (userId) => {
+    setSelectedUsers([userId]);
+    setSelectedMissions([]);
+  };
+
+  const updateSettlementMode = (value) => {
+    setSettlementMode(value);
+    if (value === 'Standalone') setSelectedMissions([]);
+  };
+
+  const missionOptions = selectedUsers.length === 0 ? [] : (data.missions || []).filter(
+    (item) => !['Completed', 'Cancelled'].includes(item.status) && item.assigned_to === selectedUsers[0]
+  );
+
+  return (
+    <form key={record.id} className="service-form service-record-form service-reassign-form" onSubmit={onSubmit}>
+      <select className="cyber-select" name="customerId" required defaultValue={record.customerId}>
+        {data.customers.filter((item) => item.enabled).map((item) => <option key={item.id} value={item.id}>{item.name} {item.organization ? `· ${item.organization}` : ''}</option>)}
+      </select>
+      <input className="cyber-input" name="title" placeholder="服务事项" defaultValue={record.title} required />
+      <input className="cyber-input" name="serviceType" placeholder="服务类型" defaultValue={record.serviceType || '咨询支持'} />
+      <select className="cyber-select" name="priority" defaultValue={['P0', 'P1', 'P2', 'P3', 'Normal'].includes(record.priority) ? record.priority : 'Normal'} required>
+        <option value="P0">P0</option>
+        <option value="P1">P1</option>
+        <option value="P2">P2</option>
+        <option value="P3">P3</option>
+        <option value="Normal">普通</option>
+      </select>
+      <select className="cyber-select" name="serviceMode" defaultValue={record.serviceMode || 'Work Hours'}><option value="Work Hours">工作时间服务</option><option value="On Call">非工作时间值班服务</option></select>
+      <div className="service-field-group">
+        <label className="service-field-label">结算模式</label>
+        <select
+          className="cyber-select"
+          name="settlementMode"
+          value={settlementMode}
+          onChange={(e) => updateSettlementMode(e.target.value)}
+        >
+          <option value="Standalone">独立服务：影响个人 ePoints</option>
+          <option value="Mission Linked">关联任务：影响任务 ePoints</option>
+        </select>
+      </div>
+      <div className="service-field-group">
+        <label className="service-field-label">基础积分 (eP)</label>
+        <input className="cyber-input" name="basePoints" type="number" min="0" max="1000" defaultValue={record.basePoints || 100} required />
+      </div>
+      <div className="service-field-group">
+        <label className="service-field-label">服务开始时间</label>
+        <input className="cyber-input" name="startedAt" type="date" value={startedAt} onChange={(e) => setStartedAt(e.target.value)} />
+      </div>
+      <div className="service-field-group">
+        <div className="service-time-header">
+          <label className="service-field-label">服务结束时间</label>
+          <button type="button" className="cyber-btn-quick" onClick={handleQuickOneMonth} title="按开始时间自动计算 1 个月后结束">
+            <CalendarPlus size={11} /> 快捷 1 个月
+          </button>
+        </div>
+        <input className="cyber-input" name="promisedAt" type="date" value={promisedAt} onChange={(e) => setPromisedAt(e.target.value)} />
+      </div>
+      <textarea className="cyber-input wide" name="description" placeholder="客户需求" rows={3} defaultValue={record.description} required />
+      <textarea className="cyber-input wide" name="promisedResult" placeholder="对客户承诺的结果和边界" rows={3} defaultValue={record.promisedResult} required />
+      <div className="service-user-picker wide">
+        {data.users.filter((item) => item.enabled && item.availability !== 'Leave').map((user) => (
+          <label key={user.id} className={selectedUsers.includes(user.id) ? 'selected' : ''}>
+            <input
+              type="radio"
+              name={`editServiceUserRadio-${record.id}`}
+              checked={selectedUsers.includes(user.id)}
+              onChange={() => selectUser(user.id)}
+            />
+            <span>{user.name}<small>{user.role} · {user.availability}{user.id === data.activeDutyUserId ? ' · 当前值班' : ''}</small></span>
+          </label>
+        ))}
+      </div>
+      {settlementMode === 'Mission Linked' && (
+        <div className="service-mission-picker wide">
+          <strong>关联内部任务（仅列出该服务人员名下的任务）</strong>
+          {selectedUsers.length === 0 ? (
+            <div className="service-picker-info-text">请先选择一名服务人员以加载关联任务。</div>
+          ) : missionOptions.length === 0 ? (
+            <div className="service-picker-info-text">该服务人员名下暂无可关联的未完成任务。</div>
+          ) : missionOptions.map((mission) => (
+            <label key={mission.id} className={selectedMissions.includes(mission.id) ? 'selected' : ''}>
+              <input
+                type="checkbox"
+                checked={selectedMissions.includes(mission.id)}
+                onChange={() => setSelectedMissions((items) => items.includes(mission.id) ? items.filter((id) => id !== mission.id) : [...items, mission.id])}
+              />
+              <span>{mission.title}<small>{mission.base_points} eP · {mission.assigned_to ? (data.users.find((user) => user.id === mission.assigned_to)?.name || '已分派') : '未分派'}</small></span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="service-form-actions wide">
+        <button type="button" className="cyber-btn" onClick={onCancel}><XCircle size={15} /> 取消</button>
+        <button type="submit" className="cyber-btn success" disabled={busy}><RotateCcw size={15} /> 保存并重新分配</button>
+      </div>
+    </form>
+  );
+}
+
+function TransitionButton({ status, busy, onClickCompleted, onClickReturned, onSubmit }) {
   const handle = () => {
     if (status === 'Pending Evaluation') {
       onClickCompleted();
+    } else if (status === 'Returned') {
+      onClickReturned();
     } else onSubmit({ status });
   };
-  return <button className="cyber-btn" disabled={busy} onClick={handle}>{transitionLabels[status] || statusLabels[status] || status}</button>;
+  return <button className={`cyber-btn ${status === 'Returned' ? 'danger' : ''}`} disabled={busy} onClick={handle}>{transitionLabels[status] || statusLabels[status] || status}</button>;
 }
 
 function FeedbackPanel({ record, feedback, busy, canManage, onSubmit }) {
@@ -586,10 +881,14 @@ function FeedbackPanel({ record, feedback, busy, canManage, onSubmit }) {
 function ServiceTimeline({ record, feedback, evaluations, participants, busy, currentUserId, canManage, onSubmitTransition }) {
   const [showResultForm, setShowResultForm] = useState(false);
   const [resultSummary, setResultSummary] = useState('');
+  const [showReturnForm, setShowReturnForm] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
 
   useEffect(() => {
     setShowResultForm(false);
     setResultSummary('');
+    setShowReturnForm(false);
+    setReturnReason('');
   }, [record?.id]);
 
   const formatTime = (timeInput) => {
@@ -609,15 +908,18 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, cu
 
   const statusRanks = {
     New: 1,
+    Accepted: 2,
     'In Progress': 2,
     Completed: 3,
     'Pending Evaluation': 4,
     Evaluated: 5,
     Reopened: 2,
+    Returned: 1,
     Cancelled: 0,
   };
 
   const currentRank = statusRanks[record.status] || 1;
+  const hasAccepted = ['Accepted', 'In Progress', 'Pending Evaluation', 'Completed', 'Evaluated', 'Reopened'].includes(record.status);
 
   const steps = [
     {
@@ -631,8 +933,8 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, cu
       key: 'Accepted',
       title: '2. 响应受理',
       desc: '人员指派与接单',
-      time: formatTime(record.startedAt),
-      status: record.startedAt || currentRank > 2 ? 'done' : currentRank === 2 ? 'active' : 'pending',
+      time: hasAccepted ? formatTime(record.startedAt) : null,
+      status: hasAccepted ? 'done' : record.status === 'New' ? 'active' : 'pending',
     },
     {
       key: 'Completed',
@@ -665,9 +967,9 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, cu
           <span>全流程服务节点流转时间线</span>
           <span className="badge cyan">当前阶段：{statusLabels[record.status] || record.status}</span>
         </div>
-        {!showResultForm && (() => {
+        {!showResultForm && !showReturnForm && (() => {
           const isParticipant = participants.some((p) => p.userId === currentUserId);
-          const canClick = (['New', 'In Progress', 'Reopened'].includes(record.status) && isParticipant) ||
+          const canClick = (['New', 'Accepted', 'In Progress', 'Reopened'].includes(record.status) && isParticipant) ||
                            (record.status === 'Pending Evaluation' && canManage);
           
           if (canClick && nextActions[record.status]?.length) {
@@ -679,6 +981,7 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, cu
                     status={status} 
                     busy={busy} 
                     onClickCompleted={() => setShowResultForm(true)} 
+                    onClickReturned={() => setShowReturnForm(true)}
                     onSubmit={onSubmitTransition} 
                   />
                 ))}
@@ -713,6 +1016,34 @@ function ServiceTimeline({ record, feedback, evaluations, participants, busy, cu
           <div className="form-actions">
             <button type="button" className="cyber-btn" onClick={() => { setShowResultForm(false); setResultSummary(''); }}>取消</button>
             <button type="submit" className="cyber-btn success" disabled={busy || resultSummary.trim().length < 6}>确认提交成果</button>
+          </div>
+        </form>
+      )}
+
+      {showReturnForm && (
+        <form className="service-result-inline-form" onSubmit={async (e) => {
+          e.preventDefault();
+          const success = await onSubmitTransition({ status: 'Returned', returnReason });
+          if (success) {
+            setShowReturnForm(false);
+            setReturnReason('');
+          }
+        }}>
+          <div className="form-group">
+            <strong>退回原因</strong>
+            <span className="form-hint">请说明无法受理的具体原因，管理员将据此修改内容或重新分配服务人员。</span>
+            <textarea
+              className="cyber-input"
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              placeholder="例如：该服务需要数据库权限支持，当前账号没有客户环境授权。"
+              required
+              rows={3}
+            />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="cyber-btn" onClick={() => { setShowReturnForm(false); setReturnReason(''); }}>取消</button>
+            <button type="submit" className="cyber-btn danger" disabled={busy || returnReason.trim().length < 4}>确认退回</button>
           </div>
         </form>
       )}

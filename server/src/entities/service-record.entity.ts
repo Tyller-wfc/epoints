@@ -50,6 +50,12 @@ export class ServiceRecord {
   @Column({ name: 'result_summary', type: 'text', nullable: true })
   resultSummary: string | null;
 
+  @Column({ name: 'return_reason', type: 'text', nullable: true })
+  returnReason: string | null;
+
+  @Column({ name: 'returned_at', type: 'timestamp', nullable: true })
+  returnedAt: Date | null;
+
   @Column({ type: 'varchar', name: 'customer_satisfaction', length: 20, nullable: true })
   customerSatisfaction: string | null;
 

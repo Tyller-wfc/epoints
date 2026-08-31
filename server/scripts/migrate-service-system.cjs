@@ -4,6 +4,13 @@ const getDatabaseConfig = require('./db-config.cjs');
 
 async function migrate() {
   const connection = await mysql.createConnection(getDatabaseConfig());
+  const addColumnIfMissing = async (table, column, definition) => {
+    const [rows] = await connection.query(
+      'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+      [table, column],
+    );
+    if (!rows.length) await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  };
   const statements = [
     `CREATE TABLE IF NOT EXISTS external_customers (
       id varchar(255) NOT NULL PRIMARY KEY,
@@ -31,6 +38,8 @@ async function migrate() {
       completed_at timestamp NULL,
       customer_confirmed_at timestamp NULL,
       result_summary text NULL,
+      return_reason text NULL,
+      returned_at timestamp NULL,
       customer_satisfaction varchar(20) NULL,
       created_by varchar(255) NOT NULL,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -103,6 +112,8 @@ async function migrate() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   ];
   for (const statement of statements) await connection.query(statement);
+  await addColumnIfMissing('service_records', 'return_reason', 'text NULL AFTER result_summary');
+  await addColumnIfMissing('service_records', 'returned_at', 'timestamp NULL AFTER return_reason');
   await connection.end();
   console.log('customer service system migration completed');
 }

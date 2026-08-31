@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { CustomerServiceService } from './customer-service.service';
 
 @Controller('api/service-center')
@@ -18,6 +18,11 @@ export class CustomerServiceController {
   @Post('records')
   createRecord(@Req() request: any, @Body() data: any) {
     return this.service.createRecord(request.user.sub, data, request.headers?.origin || '');
+  }
+
+  @Put('records/:id')
+  updateReturnedRecord(@Req() request: any, @Param('id') id: string, @Body() data: any) {
+    return this.service.updateReturnedRecord(request.user.sub, id, data, request.headers?.origin || '');
   }
 
   @Post('records/:id/transition')
