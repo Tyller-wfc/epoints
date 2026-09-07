@@ -98,6 +98,28 @@ else
     log_warn "后端 API 响应异常（HTTP $HTTP_CODE），请检查日志：pm2 logs $PM2_APP_NAME"
 fi
 
+# ── 步骤 6：更新并重载 Nginx 配置 ───────────────────────────────────────
+log_step "更新 Nginx 配置..."
+NGINX_CONF_SRC="$APP_DIR/nginx/epoints.conf"
+NGINX_CONF_AVAILABLE="/etc/nginx/sites-available/epoints"
+NGINX_CONF_ENABLED="/etc/nginx/sites-enabled/epoints"
+
+if [ -f "$NGINX_CONF_SRC" ]; then
+    cp "$NGINX_CONF_SRC" "$NGINX_CONF_AVAILABLE"
+    if [ ! -L "$NGINX_CONF_ENABLED" ] && [ ! -f "$NGINX_CONF_ENABLED" ]; then
+        ln -sf "$NGINX_CONF_AVAILABLE" "$NGINX_CONF_ENABLED"
+    fi
+
+    if nginx -t > /dev/null 2>&1; then
+        nginx -s reload
+        log_info "Nginx 配置已更新并成功重载"
+    else
+        log_warn "Nginx 配置测试失败，未执行 reload，请手动执行 nginx -t 检查"
+    fi
+else
+    log_warn "未找到 $NGINX_CONF_SRC，跳过 Nginx 配置更新"
+fi
+
 # ── 完成 ──────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}================================================${NC}"
@@ -107,6 +129,7 @@ echo ""
 echo "  当前版本：$NEW_COMMIT"
 echo "  前端目录：$APP_DIR/dist/"
 echo "  后端状态：$(pm2 describe $PM2_APP_NAME 2>/dev/null | grep status | awk '{print $4}' || echo '未知')"
+echo "  Nginx 状态：$(systemctl is-active nginx 2>/dev/null || echo '未知')"
 echo ""
 echo "  查看后端日志：pm2 logs $PM2_APP_NAME"
 echo "  查看服务状态：pm2 status"
