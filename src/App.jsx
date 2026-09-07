@@ -44,6 +44,7 @@ import Login from './components/Login';
 import HeaderAvatarMenu from './components/HeaderAvatarMenu';
 import QuickClaimMission from './components/QuickClaimMission';
 import CustomerServiceCenter from './components/CustomerServiceCenter';
+import SiteFooter from './components/SiteFooter';
 
 import { Shield, LayoutDashboard, Target, ShoppingBag, ShieldAlert, Settings, AlertOctagon, LogOut, HeartHandshake, CheckCircle2, XCircle } from 'lucide-react';
 
@@ -485,6 +486,7 @@ function App() {
       <footer style={{ padding: '20px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-muted)', background: 'rgba(0,0,0,0.1)' }}>
         <div>ePoints 敏捷效能协同系统 - 数字化团队与任务智能化激励平台</div>
         <div style={{ marginTop: '4px', fontFamily: 'monospace' }}>ALL SYSTEMS OPERATIONAL // INTEGRITY GREEN // PLATFORM SYNC ACTIVE</div>
+        <SiteFooter style={{ background: 'transparent', borderTop: '1px solid var(--border-muted)', marginTop: '14px', paddingTop: '14px' }} />
       </footer>
 
       {/* 全局 Toast 通知 */}
