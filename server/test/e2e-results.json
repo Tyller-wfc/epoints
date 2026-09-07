@@ -25,7 +25,7 @@
       "module": "State",
       "name": "Fetch full system state (/state)",
       "status": "PASS",
-      "details": "Found 2 users, 2 missions"
+      "details": "Found 2 users, 7 missions"
     },
     {
       "module": "Personnel",
@@ -37,7 +37,7 @@
       "module": "Missions",
       "name": "Create new mission (/missions/create)",
       "status": "PASS",
-      "details": "Mission created with ID m-1787024192054"
+      "details": "Mission created with ID m-1788750638830"
     },
     {
       "module": "Missions",
@@ -67,19 +67,19 @@
       "module": "Rewards",
       "name": "Add new reward item (/rewards)",
       "status": "PASS",
-      "details": "Reward added ID r-e882cd9db3d3406ebe5658ed818c5f"
+      "details": "Reward added ID r-2e5747aa754e46cbab8593a9ef1115"
     },
     {
       "module": "Rewards",
       "name": "Purchase reward (/rewards/purchase)",
       "status": "PASS",
-      "details": "Purchased successfully, tx ID tx-1787024192418"
+      "details": "Purchased successfully, tx ID tx-1788750639270"
     },
     {
       "module": "Rewards",
       "name": "Fetch transactions (/transactions)",
       "status": "PASS",
-      "details": "Found 3 transactions"
+      "details": "Found 2 transactions"
     },
     {
       "module": "Rewards",
@@ -91,7 +91,7 @@
       "module": "Tickets",
       "name": "Raise emergency ticket (/tickets/raise)",
       "status": "PASS",
-      "details": "Ticket raised ID t-1787024192459"
+      "details": "Ticket raised ID t-1788750639364"
     },
     {
       "module": "Tickets",
@@ -109,13 +109,13 @@
       "module": "CustomerService",
       "name": "Create external customer (/service-center/customers)",
       "status": "PASS",
-      "details": "Customer created ID c-f904755d-c2f2-4e80-9b2d-c2d9e23ac9e3"
+      "details": "Customer created ID c-e86afe75-aea9-4799-a38f-d949d61e0933"
     },
     {
       "module": "CustomerService",
       "name": "Create service record (/service-center/records)",
       "status": "PASS",
-      "details": "Service record created ID sr-92aaeb06-1018-436e-9069-bf7ff7db74d3"
+      "details": "Service record created ID sr-787c6dd0-a060-45dc-a52b-6a368fa379b7"
     },
     {
       "module": "CustomerService",
@@ -127,7 +127,7 @@
       "module": "MinIO Storage",
       "name": "Upload user avatar to MinIO",
       "status": "PASS",
-      "details": "Uploaded avatar URL: /api/personnel/u-2/avatar?v=7292e28f-100c-45cc-ad9c-335982ea6458.png"
+      "details": "Uploaded avatar URL: /api/personnel/u-2/avatar?v=d92f8d71-bbdf-4b76-b6bd-93d1beb3fb73.png"
     },
     {
       "module": "MinIO Storage",

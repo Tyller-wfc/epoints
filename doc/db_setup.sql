@@ -43,6 +43,7 @@ CREATE TABLE missions (
   category VARCHAR(64) NOT NULL COMMENT '任务所属分类',
   assigned_to VARCHAR(255) NULL COMMENT '被派发/认领的用户ID',
   proof_of_work TEXT NULL COMMENT '交付成果证明描述或代码链接',
+  publish_target VARCHAR(20) NOT NULL DEFAULT 'platform' COMMENT '发布目标: platform / self',
   CONSTRAINT fk_missions_user FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='战术任务看板表';
 

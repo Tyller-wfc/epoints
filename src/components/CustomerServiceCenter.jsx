@@ -431,7 +431,7 @@ export default function CustomerServiceCenter({ showToast }) {
             <AttachmentPicker files={serviceFiles} onChange={setServiceFiles} disabled={busy} />
           </div>
           <div className="service-user-picker wide">
-            {data.users.filter((item) => item.enabled && item.availability !== 'Leave').map((user) => (
+            {data.users.filter((item) => item.enabled && item.availability !== 'Leave' && item.roleType !== 'Observer').map((user) => (
               <label key={user.id} className={selectedUsers.includes(user.id) ? 'selected' : ''}>
                 <input 
                   type="radio" 
@@ -789,7 +789,7 @@ function ReturnedRecordEditForm({
       <textarea className="cyber-input wide" name="description" placeholder="客户需求" rows={3} defaultValue={record.description} required />
       <textarea className="cyber-input wide" name="promisedResult" placeholder="对客户承诺的结果和边界" rows={3} defaultValue={record.promisedResult} required />
       <div className="service-user-picker wide">
-        {data.users.filter((item) => item.enabled && item.availability !== 'Leave').map((user) => (
+        {data.users.filter((item) => item.enabled && item.availability !== 'Leave' && item.roleType !== 'Observer').map((user) => (
           <label key={user.id} className={selectedUsers.includes(user.id) ? 'selected' : ''}>
             <input
               type="radio"

@@ -69,7 +69,7 @@ export class CustomerServiceService {
     const allParticipants = await this.participantRepo.find();
     const records = (await this.recordRepo.find({ order: { createdAt: 'DESC' } }))
       .filter((item) => {
-        if (requester.roleType === 'Admin') return true;
+        if (requester.roleType === 'Admin' || requester.roleType === 'Observer') return true;
         const isParticipant = allParticipants.some((p) => p.serviceRecordId === item.id && p.userId === requesterId);
         
         if (['New', 'Accepted', 'In Progress', 'Returned', 'Reopened'].includes(item.status)) {
@@ -102,7 +102,7 @@ export class CustomerServiceService {
     }
     return {
       currentUserId: requesterId,
-      customers: customers.filter((item) => requester.roleType === 'Admin' || customerIds.has(item.id)).map((item) => ({
+      customers: customers.filter((item) => requester.roleType === 'Admin' || requester.roleType === 'Observer' || customerIds.has(item.id)).map((item) => ({
         id: item.id,
         name: item.name,
         organization: item.organization,
@@ -168,6 +168,7 @@ export class CustomerServiceService {
       .getMany();
     if (users.length !== userIds.length) throw new BadRequestException('包含无效或停用的服务人员');
     if (users.some((item) => item.availability === 'Leave')) throw new BadRequestException('休假人员不能被分派服务');
+    if (users.some((item) => item.roleType === 'Observer')) throw new BadRequestException('无法将客户服务分配给观察者');
 
     const weights = rawParticipants.map((item: any) => Number(item.contributionWeight));
     if (weights.some((item: number) => !Number.isInteger(item) || item < 1 || item > 100) || weights.reduce((sum: number, item: number) => sum + item, 0) !== 100) {
@@ -396,6 +397,8 @@ export class CustomerServiceService {
   }
 
   async transitionRecord(requesterId: string, recordId: string, data: any) {
+    const requester = await this.requireUser(requesterId);
+    if (requester.roleType === 'Observer') throw new ForbiddenException('观察者无权操作服务流转');
     const record = await this.requireRecord(recordId);
     const nextStatus = String(data.status || '');
     

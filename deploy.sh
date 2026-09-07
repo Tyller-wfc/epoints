@@ -67,6 +67,7 @@ log_step "执行数据库迁移..."
 npm run migrate:attachments
 npm run migrate:service
 npm run migrate:service-mission-settlement
+npm run migrate:publish-target
 log_info "数据库迁移完成"
 
 log_step "构建后端..."

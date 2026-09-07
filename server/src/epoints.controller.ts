@@ -167,8 +167,8 @@ export class EpointsController {
   }
 
   @Post('tickets/resolve')
-  async resolveTicket(@Body('ticketId') ticketId: string, @Body('resolutionNote') resolutionNote: string) {
-    return this.epointsService.resolveTicket(ticketId, resolutionNote);
+  async resolveTicket(@Req() request: any, @Body('ticketId') ticketId: string, @Body('resolutionNote') resolutionNote: string) {
+    return this.epointsService.resolveTicket(ticketId, resolutionNote, request.user?.sub);
   }
 
   @Post('tickets/negligence')

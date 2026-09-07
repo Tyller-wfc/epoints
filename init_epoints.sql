@@ -127,7 +127,8 @@ INSERT INTO task_domains (id, code, name, description, enabled) VALUES
 INSERT INTO roles (id, code, name, description, enabled) VALUES
   ('r-dev',     'developer',           '开发工程师', '全栈应用、接口、客户端、脚本和系统实现',  1),
   ('r-ops',     'operations-engineer', '运维工程师', 'Linux、中间件、云平台、容器和可观测性',   1),
-  ('r-network', 'network-engineer',    '网络工程师', '路由、DNS、VPN、负载均衡、防火墙和专线', 1);
+  ('r-network', 'network-engineer',    '网络工程师', '路由、DNS、VPN、负载均衡、防火墙和专线', 1),
+  ('r-observer','observer',            '观察者',     '系统观察与监督角色，可查看全局业务无操作权限', 1);
 
 -- 角色与领域映射
 INSERT INTO role_task_domains (id, role_id, domain_id, relation_type) VALUES

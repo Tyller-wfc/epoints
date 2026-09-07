@@ -57,7 +57,10 @@ export class EpointsService {
   async getAppState(requesterId = this.currentUserId) {
     await this.autoUpdateActiveDuty();
     const users = await this.userRepo.find();
-    const missions = await this.missionRepo.find();
+    const requester = users.find((u) => u.id === requesterId);
+    const isObserverOrAdmin = requester?.roleType === 'Admin' || requester?.roleType === 'Observer';
+    const allMissions = await this.missionRepo.find();
+    const missions = isObserverOrAdmin ? allMissions : allMissions.filter((m) => m.publishTarget !== 'self');
     const rewards = await this.rewardRepo.find();
     const transactions = await this.transactionRepo.find({ order: { created_at: 'DESC' } });
     const duty = await this.dutyRepo.find();
@@ -127,12 +130,14 @@ export class EpointsService {
   }
 
   async claimMission(missionId: string, userId: string) {
-    const mission = await this.missionRepo.findOne({ where: { id: missionId } });
-    if (!mission) throw new NotFoundException('Mission not found');
-    if (mission.status !== 'Available') throw new BadRequestException('Mission is not available');
-
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (user.roleType === 'Observer') throw new ForbiddenException('观察者无法认领任务');
+
+    const mission = await this.missionRepo.findOne({ where: { id: missionId } });
+    if (!mission) throw new NotFoundException('Mission not found');
+    if (mission.publishTarget === 'self') throw new ForbiddenException('该任务为管理员内部任务，无法认领');
+    if (mission.status !== 'Available') throw new BadRequestException('Mission is not available');
 
     mission.status = 'In Progress';
     mission.assigned_to = userId;
@@ -274,9 +279,11 @@ export class EpointsService {
     const roleAssignments = await this.validateRoleAssignments(data.roles);
     const primaryRole = await this.roleRepo.findOne({ where: { id: roleAssignments[0].roleId } });
     if (!primaryRole) throw new BadRequestException('角色不存在');
+    const targetRoleType = data.roleType || data.permissionType;
+    const roleType = targetRoleType === 'Observer' ? 'Observer' : 'Member';
     const userId = `u-${randomUUID()}`;
     const user = this.userRepo.create({
-      id: userId, name, avatar: '/avatars/dev.png', role: primaryRole.name, roleType: 'Member',
+      id: userId, name, avatar: '/avatars/dev.png', role: primaryRole.name, roleType,
       points_balance: 0, points_earned_lifetime: 0, penalties_count: 0, points_deducted_total: 0,
       phoneEncrypted: this.piiService.encrypt(phone), phoneHash, enabled: data.enabled !== false,
       availability: ['Available', 'Busy', 'Leave'].includes(data.availability) ? data.availability : 'Available',
@@ -396,6 +403,12 @@ export class EpointsService {
     user.enabled = data.enabled !== false;
     user.availability = ['Available', 'Busy', 'Leave'].includes(data.availability) ? data.availability : 'Available';
     user.role = primaryRole.name;
+    if (userId !== 'u-2') {
+      const targetRoleType = data.roleType || data.permissionType;
+      if (['Member', 'Observer'].includes(targetRoleType)) {
+        user.roleType = targetRoleType;
+      }
+    }
     await this.dataSource.transaction(async (manager) => {
       await manager.save(User, user);
       await manager.delete(UserRole, { userId });
@@ -439,7 +452,9 @@ export class EpointsService {
     const primaryDomainId = missionData.primaryDomainId;
     const domains = await this.domainRepo.find({ where: { id: In(domainIds), enabled: true } });
     if (domains.length !== domainIds.length) throw new BadRequestException('包含无效任务领域');
-    const recipients = await this.matchMissionRecipients(domainIds);
+    const publishTarget = missionData.publish_target === 'self' ? 'self' : 'platform';
+    const isSelf = publishTarget === 'self';
+    const recipients = isSelf ? [] : await this.matchMissionRecipients(domainIds);
     const mission = new Mission();
     mission.id = `m-${Date.now()}`;
     mission.title = missionData.title;
@@ -448,7 +463,14 @@ export class EpointsService {
     mission.multiplier = Number(missionData.multiplier || 1.0);
     mission.category = domains.find((item) => item.id === primaryDomainId)?.code || 'software';
     mission.priority = ['Normal', 'High', 'Critical'].includes(missionData.priority) ? missionData.priority : 'Normal';
-    mission.status = 'Available';
+    mission.publishTarget = publishTarget;
+    if (isSelf) {
+      mission.status = 'In Progress';
+      mission.assigned_to = userId;
+    } else {
+      mission.status = 'Available';
+      mission.assigned_to = null as any;
+    }
     const attachments = await this.storageService.uploadFiles('mission', mission.id, userId, files);
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -465,13 +487,17 @@ export class EpointsService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     const userName = user ? user.name : '主管';
 
-    await this.pushFeed('system', `【任务发布】主管 ${userName} 发布了新战术任务：${missionData.title}，基础分 ${missionData.base_points} eP。`);
-    try {
-      await this.sendMissionWecomNotification(mission, userName, attachments.length, domains.map((item) => item.name), recipients.filter((item) => item.mentioned).map((item) => item.phone).filter(Boolean), requestOrigin);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
-      console.error('WeCom mission notification failed:', error);
-      await this.pushFeed('system', `【企业微信通知失败】任务“${mission.title}”已发布，但消息推送失败：${message}`);
+    if (isSelf) {
+      await this.pushFeed('mission', `【管理自承接】主管 ${userName} 发布并承接了内部任务：${missionData.title}。`);
+    } else {
+      await this.pushFeed('system', `【任务发布】主管 ${userName} 发布了新战术任务：${missionData.title}，基础分 ${missionData.base_points} eP。`);
+      try {
+        await this.sendMissionWecomNotification(mission, userName, attachments.length, domains.map((item) => item.name), recipients.filter((item) => item.mentioned).map((item) => item.phone).filter(Boolean), requestOrigin);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        console.error('WeCom mission notification failed:', error);
+        await this.pushFeed('system', `【企业微信通知失败】任务“${mission.title}”已发布，但消息推送失败：${message}`);
+      }
     }
     return this.getAppState(userId);
   }
@@ -647,7 +673,11 @@ export class EpointsService {
     return this.getAppState();
   }
 
-  async acknowledgeTicket(ticketId: string, _userId: string) {
+  async acknowledgeTicket(ticketId: string, userId?: string) {
+    if (userId) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (user?.roleType === 'Observer') throw new ForbiddenException('观察者无法接单');
+    }
     const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
     if (!ticket || ticket.status !== 'Open') return this.getAppState();
 
@@ -679,7 +709,11 @@ export class EpointsService {
     return this.getAppState();
   }
 
-  async resolveTicket(ticketId: string, resolutionNote: string) {
+  async resolveTicket(ticketId: string, resolutionNote: string, userId?: string) {
+    if (userId) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (user?.roleType === 'Observer') throw new ForbiddenException('观察者无法排障结单');
+    }
     const ticket = await this.ticketRepo.findOne({ where: { id: ticketId } });
     if (!ticket || ticket.status !== 'Acknowledged' || !ticket.acknowledged_at) return this.getAppState();
 
@@ -806,6 +840,7 @@ export class EpointsService {
       .where('user.id IN (:...userIds)', { userIds })
       .andWhere('user.enabled = :enabled', { enabled: true })
       .andWhere('user.availability != :leave', { leave: 'Leave' })
+      .andWhere('user.roleType != :observer', { observer: 'Observer' })
       .getMany();
     const roles = await this.roleRepo.find({ where: { id: In(roleIds) } });
     return users.map((user) => {
@@ -1120,6 +1155,7 @@ export class EpointsService {
       await this.dutyRepo.save(d);
       if (d.is_active) {
         const u = await this.userRepo.findOne({ where: { id: d.user_id } });
+        if (u && u.roleType === 'Observer') throw new BadRequestException('观察者不可设置为在岗值班员');
         if (u) onDutyName = u.name;
       }
     }
@@ -1172,6 +1208,7 @@ export class EpointsService {
     await this.assertAdmin(requesterId);
     const user = await this.userRepo.findOne({ where: { id: data.userId } });
     if (!user) throw new NotFoundException('人员不存在');
+    if (user.roleType === 'Observer') throw new BadRequestException('观察者不可被排班');
     if (!data.shiftStart || !data.shiftEnd) throw new BadRequestException('请提供班次开始和结束时间');
 
     const rawDates = Array.isArray(data.dutyDates) && data.dutyDates.length > 0

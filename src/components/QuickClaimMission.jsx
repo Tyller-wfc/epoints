@@ -28,7 +28,10 @@ export default function QuickClaimMission({ mission, users, currentUser, claimSt
   let actionIcon = <PlayCircle size={19} />;
   let actionDisabled = false;
 
-  if (currentUser.roleType === 'Admin' && isAvailable) {
+  if (currentUser.roleType === 'Observer') {
+    actionLabel = '观察者不可认领任务';
+    actionDisabled = true;
+  } else if (currentUser.roleType === 'Admin' && isAvailable) {
     actionLabel = '主管不可直接认领';
     actionDisabled = true;
   } else if (isMine) {

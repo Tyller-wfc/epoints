@@ -3,8 +3,18 @@ import { Camera, Check, Phone, Plus, RotateCcw, Save, Trash2, UserRoundCog, User
 
 const availabilityLabels = { Available: '可用', Busy: '忙碌', Leave: '休假' };
 const toForm = (person) => {
-  const sorted = [...person.roles].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
-  return { name: person.name, avatar: person.avatar, username: person.username || '', password: '', phone: person.phone || '', enabled: person.enabled, availability: person.availability, roles: sorted.map((r) => ({ roleId: r.roleId, isPrimary: r.isPrimary, level: r.level ?? 1 })) };
+  const sorted = [...(person.roles || [])].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  return { 
+    name: person.name, 
+    avatar: person.avatar, 
+    username: person.username || '', 
+    password: '', 
+    phone: person.phone || '', 
+    enabled: person.enabled, 
+    availability: person.availability, 
+    roleType: person.permissionType || person.roleType || 'Member',
+    roles: sorted.map((r) => ({ roleId: r.roleId, isPrimary: r.isPrimary, level: r.level ?? 1 })) 
+  };
 };
 
 export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePersonnel, onCreatePersonnel, onDeletePersonnel, onUpdatePersonnelAvatar, onResetPersonnelAvatar }) {
@@ -34,7 +44,7 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
     setStatus(null);
     setAvatarFile(null);
     setAvatarPreview('');
-    setForm({ name: '', avatar: '/avatars/dev.png', username: '', password: '', phone: '', enabled: true, availability: 'Available', roles: roles[0] ? [{ roleId: roles[0].id, isPrimary: true, level: 1 }] : [] });
+    setForm({ name: '', avatar: '/avatars/dev.png', username: '', password: '', phone: '', enabled: true, availability: 'Available', roleType: 'Member', roles: roles[0] ? [{ roleId: roles[0].id, isPrimary: true, level: 1 }] : [] });
   };
 
   const chooseAvatar = (file) => {
@@ -68,9 +78,24 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
     <div className="personnel-heading"><div><Users size={18} /><span><strong>人员与角色管理</strong><small>姓名、登录账号、企业微信手机号和技术角色</small></span></div><div><span className="badge cyan">{personnel.length} 人</span><button type="button" className="cyber-btn" onClick={beginCreate} style={{ padding: '6px 10px', fontSize: '.7rem' }}><Plus size={14} />新增人员</button></div></div>
     <div className="personnel-layout">
       <div className="personnel-list">
-        {personnel.map((person) => <button type="button" key={person.id} className={selectedId === person.id ? 'active' : ''} onClick={() => select(person)}>
-          <img src={person.avatar} alt="" /><span><strong>{person.name}</strong><small>{person.roles.filter((r) => r.role).map((r) => r.role.name).join(' · ') || '未设置角色'}</small></span>{selectedId === person.id && <Check size={15} />}
-        </button>)}
+        {personnel.map((person) => {
+          const isObserver = (person.permissionType || person.roleType) === 'Observer';
+          const isAdmin = (person.permissionType || person.roleType) === 'Admin';
+          return (
+            <button type="button" key={person.id} className={selectedId === person.id ? 'active' : ''} onClick={() => select(person)}>
+              <img src={person.avatar} alt="" />
+              <span>
+                <strong>
+                  {person.name}
+                  {isObserver && <span className="badge orange" style={{ fontSize: '.62rem', marginLeft: '6px', padding: '1px 5px' }}>观察者</span>}
+                  {isAdmin && <span className="badge cyan" style={{ fontSize: '.62rem', marginLeft: '6px', padding: '1px 5px' }}>管理员</span>}
+                </strong>
+                <small>{person.roles.filter((r) => r.role).map((r) => r.role.name).join(' · ') || '未设置角色'}</small>
+              </span>
+              {selectedId === person.id && <Check size={15} />}
+            </button>
+          );
+        })}
         {creating && <button type="button" className="active"><span><strong>新成员</strong><small>填写账号及角色信息</small></span><Check size={15} /></button>}
       </div>
       <div className="personnel-editor">
@@ -85,7 +110,29 @@ export default function PersonnelManager({ roles, onLoadPersonnel, onUpdatePerso
           {creating && <label>初始密码<input type="password" className="cyber-input" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="至少 6 位" /></label>}
           <label>企业微信手机号<div className="input-with-icon"><Phone size={15} /><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="13800138000" /></div></label>
           <label>状态<select className="cyber-select" value={form.availability} onChange={(event) => setForm({ ...form, availability: event.target.value })}>{Object.entries(availabilityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+          <label>权限身份
+            <select 
+              className="cyber-select" 
+              value={form.roleType} 
+              disabled={selectedId === 'u-2'} 
+              onChange={(event) => setForm({ ...form, roleType: event.target.value })}
+            >
+              {selectedId === 'u-2' ? (
+                <option value="Admin">管理员 (Admin)</option>
+              ) : (
+                <>
+                  <option value="Member">普通用户 / 研发成员 (可认领任务)</option>
+                  <option value="Observer">观察者 (全局只读，不可认领/指派)</option>
+                </>
+              )}
+            </select>
+          </label>
         </div>
+        {form.roleType === 'Observer' && (
+          <div style={{ margin: '8px 0', padding: '8px 12px', background: 'rgba(249, 115, 22, 0.08)', borderLeft: '3px solid var(--accent-orange)', fontSize: '.75rem', color: 'var(--text-secondary)' }}>
+            💡 <strong>观察者角色说明</strong>：该成员享有全局只读权限（可查看任务、客户服务、技术保障等全部事项），但无法认领任务或参与处理，管理员也无法将其排班或指派为客户服务人员。
+          </div>
+        )}
         <div className="role-editor-title"><UserRoundCog size={16} />技术角色</div>
         <div className="role-editor-grid">
           {roles.map((role) => {

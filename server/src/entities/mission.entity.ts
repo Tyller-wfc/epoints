@@ -31,4 +31,7 @@ export class Mission {
 
   @Column('text', { nullable: true })
   proof_of_work: string;
+
+  @Column({ name: 'publish_target', length: 20, default: 'platform' })
+  publishTarget: string;
 }

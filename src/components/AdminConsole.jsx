@@ -339,7 +339,7 @@ function DutyScheduler({ duty, users, onSetActiveDuty, onCreateDuty, onDeleteDut
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>值班人员</label>
             <select className="cyber-select" value={formUserId} onChange={e => setFormUserId(e.target.value)} style={{ fontSize: '0.82rem', width: '100%' }}>
-              {users.filter(u => u.enabled !== false).map(u => (
+              {users.filter(u => u.enabled !== false && u.roleType !== 'Observer').map(u => (
                 <option key={u.id} value={u.id}>{u.name}（{u.role}）</option>
               ))}
             </select>
@@ -1009,6 +1009,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
   const [newPriority, setNewPriority] = useState('Normal');
   const [recipientPreview, setRecipientPreview] = useState(null);
   const [newMult, setNewMult] = useState(1.0);
+  const [newPublishTarget, setNewPublishTarget] = useState('platform');
   const [newFiles, setNewFiles] = useState([]);
   const [missionSubmitting, setMissionSubmitting] = useState(false);
   const [missionError, setMissionError] = useState('');
@@ -1029,7 +1030,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
     setMissionError('');
     try {
       const primaryDomainId = newPrimaryDomain || taskDomains[0]?.id;
-      await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId }, newFiles);
+      await onCreateMission({ title: newTitle, description: newDesc, base_points: newBase, multiplier: newMult, priority: newPriority, primaryDomainId, publish_target: newPublishTarget }, newFiles);
       setNewTitle('');
       setNewDesc('');
       setNewBase(500);
@@ -1037,6 +1038,7 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
       setNewPriority('Normal');
       setRecipientPreview(null);
       setNewMult(1.0);
+      setNewPublishTarget('platform');
       setNewFiles([]);
     } catch (error) {
       setMissionError(error.message || '任务发布失败');
@@ -1276,6 +1278,38 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                 style={{ resize: 'none' }}
               />
             </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>发布目标</label>
+              <div style={{ display: 'flex', gap: '14px', background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-muted)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem', color: newPublishTarget === 'platform' ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}>
+                  <input
+                    type="radio"
+                    name="publishTarget"
+                    value="platform"
+                    checked={newPublishTarget === 'platform'}
+                    onChange={() => setNewPublishTarget('platform')}
+                    style={{ accentColor: 'var(--accent-cyan)' }}
+                  />
+                  📢 发布到平台 (公开认领)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem', color: newPublishTarget === 'self' ? 'var(--accent-cyan)' : 'var(--text-secondary)' }}>
+                  <input
+                    type="radio"
+                    name="publishTarget"
+                    value="self"
+                    checked={newPublishTarget === 'self'}
+                    onChange={() => setNewPublishTarget('self')}
+                    style={{ accentColor: 'var(--accent-cyan)' }}
+                  />
+                  🔒 发布给自己 (管理自承接)
+                </label>
+              </div>
+              <small style={{ display: 'block', marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                {newPublishTarget === 'platform'
+                  ? '平台普通成员可见并可自由认领，将通过企业微信广播通知匹配领域成员。'
+                  : '仅管理员与观察者可见，任务直接分配给您并进入进行中，不向平台成员广播通知。'}
+              </small>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1322,17 +1356,23 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
               </label>
             </div>
 
-            <div className="recipient-preview-box">
-              <button type="button" disabled={!isAdmin} onClick={async () => {
-                try { setRecipientPreview(await onPreviewMissionRecipients({ primaryDomainId: newPrimaryDomain || taskDomains[0]?.id })); }
-                catch (error) { setMissionError(error.message); }
-              }}>查看匹配成员</button>
-              {recipientPreview && <div><strong>匹配 {recipientPreview.recipients.length} 人，将 @ {recipientPreview.mentionCount} 人</strong>{recipientPreview.recipients.length ? recipientPreview.recipients.map(item => <span key={item.userId}>{item.name} · {item.roleNames[0]}</span>) : <span>当前领域未匹配到可用人员</span>}</div>}
-            </div>
+            {newPublishTarget === 'platform' ? (
+              <div className="recipient-preview-box">
+                <button type="button" disabled={!isAdmin} onClick={async () => {
+                  try { setRecipientPreview(await onPreviewMissionRecipients({ primaryDomainId: newPrimaryDomain || taskDomains[0]?.id })); }
+                  catch (error) { setMissionError(error.message); }
+                }}>查看匹配成员</button>
+                {recipientPreview && <div><strong>匹配 {recipientPreview.recipients.length} 人，将 @ {recipientPreview.mentionCount} 人</strong>{recipientPreview.recipients.length ? recipientPreview.recipients.map(item => <span key={item.userId}>{item.name} · {item.roleNames[0]}</span>) : <span>当前领域未匹配到可用人员</span>}</div>}
+              </div>
+            ) : (
+              <div className="recipient-preview-box" style={{ background: 'rgba(56, 189, 248, 0.05)', borderColor: 'var(--border-muted)', color: 'var(--text-muted)' }}>
+                <span>🔒 <strong>内部管理任务</strong>：不广播通知，仅管理员与观察者可见，任务将直接归属您本人。</span>
+              </div>
+            )}
 
             <div style={{ marginTop: 'auto', paddingTop: '10px' }}>
               <button type="submit" disabled={missionSubmitting || !isAdmin} className="cyber-btn success" style={{ width: '100%', height: '42px' }}>
-                <PlusCircle size={16} /> {!isAdmin ? '仅管理员可发布任务' : missionSubmitting ? '正在上传并发布...' : '发布该任务至公开看板'}
+                <PlusCircle size={16} /> {!isAdmin ? '仅管理员可发布任务' : missionSubmitting ? '正在上传并发布...' : newPublishTarget === 'self' ? '发布给自己 (仅管理与观察者可见)' : '发布该任务至公开看板'}
               </button>
             </div>
           </div>

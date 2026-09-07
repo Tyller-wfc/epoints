@@ -134,7 +134,12 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                 <div>
                   {/* 卡片头部：分类与积分 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' }}>
+                      {m.publishTarget === 'self' && (
+                        <span className="badge purple" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)', color: '#c084fc' }}>
+                          🔒 管理自承接
+                        </span>
+                      )}
                       {(m.domains || []).map(item => <span className={`badge ${item.isPrimary ? 'cyan' : 'muted'}`} key={item.domainId}>{item.domain?.name}{item.isPrimary ? ' · 主' : ''}</span>)}
                     </div>
                     
@@ -177,11 +182,11 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                     <button
                       className="cyber-btn"
                       style={{ width: '100%' }}
-                      disabled={currentUser.roleType === "Admin"}
+                      disabled={currentUser.roleType === "Admin" || currentUser.roleType === "Observer"}
                       onClick={() => onClaimMission(m.id, currentUserId)}
                     >
                       <PlayCircle size={16} /> 
-                      {currentUser.roleType === "Admin" ? "主管不可直接认领" : "认领该项目任务"}
+                      {currentUser.roleType === "Admin" ? "主管不可直接认领" : currentUser.roleType === "Observer" ? "观察者不可认领" : "认领该项目任务"}
                     </button>
                   )}
 
