@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Award, Coins, TrendingUp, ShieldAlert, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target, AlertOctagon } from 'lucide-react';
+import { Award, Coins, TrendingUp, UserCheck, BookOpen, Briefcase, Code, PenTool, CheckSquare, Server, HeartHandshake, GraduationCap, Flame, Target, AlertOctagon } from 'lucide-react';
 
 export default function Dashboard({ state, onResetData }) {
-  const { users, feed, currentUserId } = state;
+  const { users, currentUserId } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
   const [activeHandbookTab, setActiveHandbookTab] = useState('points');
@@ -12,16 +12,6 @@ export default function Dashboard({ state, onResetData }) {
 
   // 获取积分最高的员工
   const mvp = leaderboard[0];
-
-  // 格式化时间
-  const formatTime = (isoString) => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return "未知";
-    }
-  };
 
   // 根据累计积分判断荣誉段位等级 (L1 - L5 体系)
   const getRankName = (lifetimePoints) => {
@@ -145,120 +135,74 @@ export default function Dashboard({ state, onResetData }) {
 
       </div>
 
-      {/* 排行榜 & 实时动态流 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-        
-        {/* 研发效能贡献榜 */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <TrendingUp size={18} />
-            研发效能贡献榜
-          </h3>
+      {/* 研发效能贡献榜 */}
+      <div className="glass-panel" style={{ padding: '24px' }}>
+        <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <TrendingUp size={18} />
+          研发效能贡献榜
+        </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {leaderboard.map((u, idx) => {
-              const isMVP = mvp && u.id === mvp.id;
-              return (
-                <div 
-                  key={u.id}
-                  style={{
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {leaderboard.map((u, idx) => {
+            const isMVP = mvp && u.id === mvp.id;
+            return (
+              <div 
+                key={u.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: u.id === currentUserId ? 'rgba(0,242,254,0.03)' : 'rgba(255,255,255,0.01)',
+                  border: u.id === currentUserId ? '1px solid rgba(0,242,254,0.1)' : '1px solid var(--border-muted)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ 
+                    width: '24px', 
+                    height: '24px', 
+                    borderRadius: '50%', 
+                    background: idx === 0 ? 'var(--accent-orange)' : idx === 1 ? 'silver' : idx === 2 ? 'brown' : 'transparent',
+                    color: idx < 3 ? 'black' : 'var(--text-muted)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: u.id === currentUserId ? 'rgba(0,242,254,0.03)' : 'rgba(255,255,255,0.01)',
-                    border: u.id === currentUserId ? '1px solid rgba(0,242,254,0.1)' : '1px solid var(--border-muted)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ 
-                      width: '24px', 
-                      height: '24px', 
-                      borderRadius: '50%', 
-                      background: idx === 0 ? 'var(--accent-orange)' : idx === 1 ? 'silver' : idx === 2 ? 'brown' : 'transparent',
-                      color: idx < 3 ? 'black' : 'var(--text-muted)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 'bold',
-                      fontSize: '0.8rem',
-                      fontFamily: 'var(--font-display)'
-                    }}>
-                      {idx + 1}
-                    </div>
-                    <img src={u.avatar} alt={u.name} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
-                    <div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>
-                        {u.name}
-                        {isMVP && <span className="badge orange" style={{ marginLeft: '8px', fontSize: '0.6rem', padding: '1px 4px' }}>MVP</span>}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>{u.role}</span>
-                        {(u.penalties_count > 0) && (
-                          <span style={{ color: 'var(--accent-red)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
-                            <AlertOctagon size={10} /> {u.penalties_count} 罚
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    justifyContent: 'center',
+                    fontWeight: 'bold',
+                    fontSize: '0.8rem',
+                    fontFamily: 'var(--font-display)'
+                  }}>
+                    {idx + 1}
                   </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="military-font glow-text-cyan" style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                      {u.points_balance} eP
+                  <img src={u.avatar} alt={u.name} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                  <div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>
+                      {u.name}
+                      {isMVP && <span className="badge orange" style={{ marginLeft: '8px', fontSize: '0.6rem', padding: '1px 4px' }}>MVP</span>}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      累计: {u.points_earned_lifetime}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{u.role}</span>
+                      {(u.penalties_count > 0) && (
+                        <span style={{ color: 'var(--accent-red)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
+                          <AlertOctagon size={10} /> {u.penalties_count} 罚
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* 实时动态监视屏 */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldAlert size={18} />
-            效能协同实时动态屏
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
-            {feed.map((item) => {
-              let tagColor = 'muted';
-              let label = '系统';
-              if (item.type === 'mission') { tagColor = 'cyan'; label = '任务'; }
-              else if (item.type === 'shop') { tagColor = 'green'; label = '商城'; }
-              else if (item.type === 'support') { tagColor = 'red'; label = '保障'; }
-
-              return (
-                <div 
-                  key={item.id} 
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(0, 0, 0, 0.2)',
-                    borderLeft: `2px solid var(--accent-${tagColor === 'cyan' ? 'cyan' : tagColor === 'green' ? 'green' : tagColor === 'red' ? 'red' : 'muted'})`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className={`badge ${tagColor}`} style={{ fontSize: '0.65rem' }}>{label}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{formatTime(item.timestamp)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="military-font glow-text-cyan" style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
+                    {u.points_balance} eP
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
-                    {item.message}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    累计: {u.points_earned_lifetime}
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
-
       </div>
 
       {/* 系统规则与头衔手册 */}
