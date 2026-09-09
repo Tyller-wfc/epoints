@@ -87,122 +87,91 @@ export default function Dashboard({ state, onResetData }) {
           )}
         </div>
 
-        {/* 角色速切面板 */}
-        <div className="glass-panel" style={{ padding: '24px' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <span className="badge orange">团队成员</span>
+        {/* 团队成员与研发效能贡献榜 (合成模块) */}
+        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TrendingUp size={18} className="glow-text-cyan" />
+              <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.1rem', margin: 0 }}>
+                团队成员 · 效能贡献榜
+              </h3>
+            </div>
+            <span className="badge orange" style={{ fontSize: '0.7rem' }}>全员排行</span>
           </div>
-          
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', lineHeight: '1.4' }}>
-            当前账号已通过身份认证。下方展示组织成员及其岗位信息，账号切换请先退出当前登录。
-          </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-            {users.map(u => (
-              <button
-                key={u.id}
-                className={`glass-panel`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderLeft: u.id === currentUserId ? '3px solid var(--accent-cyan)' : '1px solid var(--border-muted)',
-                  background: u.id === currentUserId ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 0, 0, 0.2)',
-                  cursor: 'default',
-                  textAlign: 'left',
-                  borderRadius: '4px'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <img src={u.avatar} alt={u.name} style={{ width: '28px', height: '28px', borderRadius: '50%' }} />
-                  <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>{u.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.role}</div>
-                  </div>
-                </div>
-                {u.id === currentUserId ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--accent-cyan)', fontWeight: 'bold' }}>
-                    已登录 <UserCheck size={12} />
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>成员</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 研发效能贡献榜 */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 className="military-font glow-text-cyan" style={{ fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <TrendingUp size={18} />
-          研发效能贡献榜
-        </h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {leaderboard.map((u, idx) => {
-            const isMVP = mvp && u.id === mvp.id;
-            return (
-              <div 
-                key={u.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: u.id === currentUserId ? 'rgba(0,242,254,0.03)' : 'rgba(255,255,255,0.01)',
-                  border: u.id === currentUserId ? '1px solid rgba(0,242,254,0.1)' : '1px solid var(--border-muted)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ 
-                    width: '24px', 
-                    height: '24px', 
-                    borderRadius: '50%', 
-                    background: idx === 0 ? 'var(--accent-orange)' : idx === 1 ? 'silver' : idx === 2 ? 'brown' : 'transparent',
-                    color: idx < 3 ? 'black' : 'var(--text-muted)',
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
+            {leaderboard.map((u, idx) => {
+              const isMVP = mvp && u.id === mvp.id;
+              const isCurrent = u.id === currentUserId;
+              return (
+                <div 
+                  key={u.id}
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 'bold',
-                    fontSize: '0.8rem',
-                    fontFamily: 'var(--font-display)'
-                  }}>
-                    {idx + 1}
-                  </div>
-                  <img src={u.avatar} alt={u.name} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
-                  <div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text-bright)' }}>
-                      {u.name}
-                      {isMVP && <span className="badge orange" style={{ marginLeft: '8px', fontSize: '0.6rem', padding: '1px 4px' }}>MVP</span>}
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: isCurrent ? 'rgba(0, 242, 254, 0.06)' : 'rgba(255, 255, 255, 0.01)',
+                    borderLeft: isCurrent ? '3px solid var(--accent-cyan)' : '1px solid var(--border-muted)',
+                    borderTop: isCurrent ? '1px solid rgba(0, 242, 254, 0.15)' : '1px solid var(--border-muted)',
+                    borderRight: isCurrent ? '1px solid rgba(0, 242, 254, 0.15)' : '1px solid var(--border-muted)',
+                    borderBottom: isCurrent ? '1px solid rgba(0, 242, 254, 0.15)' : '1px solid var(--border-muted)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ 
+                      width: '24px', 
+                      height: '24px', 
+                      borderRadius: '50%', 
+                      background: idx === 0 ? 'var(--accent-orange)' : idx === 1 ? 'silver' : idx === 2 ? 'brown' : 'rgba(255,255,255,0.05)',
+                      color: idx < 3 ? 'black' : 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 'bold',
+                      fontSize: '0.75rem',
+                      fontFamily: 'var(--font-display)',
+                      flexShrink: 0
+                    }}>
+                      {idx + 1}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>{u.role}</span>
-                      {(u.penalties_count > 0) && (
-                        <span style={{ color: 'var(--accent-red)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
-                          <AlertOctagon size={10} /> {u.penalties_count} 罚
-                        </span>
-                      )}
+                    <img src={u.avatar} alt={u.name} style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{u.name}</span>
+                        {isMVP && <span className="badge orange" style={{ fontSize: '0.6rem', padding: '1px 4px' }}>MVP</span>}
+                        {isCurrent && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.65rem', color: 'var(--accent-cyan)', fontWeight: 'bold' }}>
+                            已登录 <UserCheck size={11} />
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        <span>{u.role}</span>
+                        {(u.penalties_count > 0) && (
+                          <span style={{ color: 'var(--accent-red)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
+                            <AlertOctagon size={10} /> {u.penalties_count} 罚
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <div className="military-font glow-text-cyan" style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>
-                    {u.points_balance} eP
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    累计: {u.points_earned_lifetime}
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div className="military-font glow-text-cyan" style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                      {u.points_balance} eP
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      累计: {u.points_earned_lifetime}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+
       </div>
 
       {/* 系统规则与头衔手册 */}
