@@ -98,12 +98,20 @@ export const resetAppState = async () => {
   return postJson('/system/reset');
 };
 
-export const claimMission = async (missionId, userId) => {
-  return postJson('/missions/claim', { missionId, userId });
+export const claimMission = async (missionId) => {
+  return postJson('/missions/claim', { missionId });
 };
 
 export const submitProof = async (missionId, proofText) => {
   return postJson('/missions/submit', { missionId, proofText });
+};
+
+export const transferMission = async (missionId, targetUserId) => {
+  return postJson('/missions/transfer', { missionId, targetUserId });
+};
+
+export const returnMissionToAdmin = async (missionId) => {
+  return postJson('/missions/return-to-admin', { missionId });
 };
 
 export const verifyMission = async (missionId, isApproved, penalize = false) => {

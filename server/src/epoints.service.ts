@@ -147,10 +147,14 @@ export class EpointsService {
     return this.getAppState(userId);
   }
 
-  async submitProof(missionId: string, proofText: string) {
+  async submitProof(missionId: string, proofText: string, requesterId?: string) {
     const mission = await this.missionRepo.findOne({ where: { id: missionId } });
     if (!mission) throw new NotFoundException('Mission not found');
     if (mission.status !== 'In Progress') throw new BadRequestException('Mission is not in progress');
+    if (requesterId && mission.assigned_to !== requesterId) {
+      throw new ForbiddenException('只有当前任务承接人可以提交成果');
+    }
+    if (!String(proofText || '').trim()) throw new BadRequestException('请填写交付成果证明');
 
     const user = await this.userRepo.findOne({ where: { id: mission.assigned_to } });
     const userName = user ? user.name : '未知人员';
@@ -161,6 +165,68 @@ export class EpointsService {
 
     await this.pushFeed('mission', `${userName} 提交了开发任务【${mission.title}】的交付成果，待主管核实。`);
     return this.getAppState();
+  }
+
+  async transferMission(requesterId: string, missionId: string, targetUserId: string) {
+    const { requester, mission } = await this.getMemberMissionOwnership(requesterId, missionId);
+    if (!targetUserId || targetUserId === requesterId) {
+      throw new BadRequestException('请选择其他普通用户作为新的承接人');
+    }
+
+    const targetUser = await this.userRepo.findOne({ where: { id: targetUserId } });
+    if (!targetUser) throw new NotFoundException('接手人员不存在');
+    if (targetUser.roleType !== 'Member') throw new ForbiddenException('任务只能转给普通用户');
+    if (targetUser.enabled === false) throw new BadRequestException('接手人员已停用');
+    if (targetUser.availability === 'Leave') throw new BadRequestException('休假中的人员不能接手任务');
+
+    mission.assigned_to = targetUser.id;
+    mission.publishTarget = 'platform';
+    mission.status = 'In Progress';
+    mission.proof_of_work = '';
+    await this.missionRepo.save(mission);
+
+    await this.pushFeed('mission', `【任务转交】${requester.name} 将任务【${mission.title}】转交给 ${targetUser.name}，完成后由接手人获得全部任务积分。`);
+    return this.getAppState(requesterId);
+  }
+
+  async returnMissionToAdmin(requesterId: string, missionId: string) {
+    const { requester, mission } = await this.getMemberMissionOwnership(requesterId, missionId);
+    const administrator = await this.findTaskAdministrator();
+
+    mission.assigned_to = administrator.id;
+    mission.publishTarget = 'self';
+    mission.status = 'In Progress';
+    mission.proof_of_work = '';
+    await this.missionRepo.save(mission);
+
+    await this.pushFeed('mission', `【任务退回】${requester.name} 将任务【${mission.title}】退回管理员 ${administrator.name}，任务转为管理自承接。`);
+    return this.getAppState(requesterId);
+  }
+
+  private async getMemberMissionOwnership(requesterId: string, missionId: string) {
+    const requester = await this.userRepo.findOne({ where: { id: requesterId } });
+    if (!requester) throw new NotFoundException('User not found');
+    if (requester.roleType !== 'Member') throw new ForbiddenException('仅普通用户可以转交或退回任务');
+
+    const mission = await this.missionRepo.findOne({ where: { id: missionId } });
+    if (!mission) throw new NotFoundException('Mission not found');
+    if (mission.status !== 'In Progress') {
+      throw new BadRequestException('只有进行中的任务可以转交或退回');
+    }
+    if (mission.assigned_to !== requesterId) {
+      throw new ForbiddenException('只有当前任务承接人可以转交或退回');
+    }
+
+    return { requester, mission };
+  }
+
+  private async findTaskAdministrator() {
+    const administrators = await this.userRepo.find({
+      where: { roleType: 'Admin', enabled: true },
+    });
+    const administrator = administrators.find((user) => user.id === 'u-2') || administrators[0];
+    if (!administrator) throw new BadRequestException('系统未配置可承接任务的管理员');
+    return administrator;
   }
 
   async penalizeUser(userId: string, points: number, reason: string) {

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Compass, Flame, CheckCircle2, Clock, PlayCircle, Send, ExternalLink } from 'lucide-react';
+import { ArrowRightLeft, CheckCircle2, Clock, Compass, CornerUpLeft, ExternalLink, Flame, PlayCircle, Send } from 'lucide-react';
 import AttachmentList from './AttachmentList';
 
-export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
+export default function MissionBoard({ state, onClaimMission, onSubmitProof, onTransferMission, onReturnMissionToAdmin }) {
   const { missions, users, currentUserId, taskDomains = [] } = state;
   const currentUser = users.find(u => u.id === currentUserId) || users[0];
 
@@ -12,6 +12,18 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
   // 证明提交临时状态
   const [submittingMissionId, setSubmittingMissionId] = useState(null);
   const [proofText, setProofText] = useState("");
+  const [transferMissionId, setTransferMissionId] = useState(null);
+  const [transferTargetId, setTransferTargetId] = useState("");
+  const [missionActionBusy, setMissionActionBusy] = useState(false);
+  const [missionActionError, setMissionActionError] = useState("");
+  const [missionActionMissionId, setMissionActionMissionId] = useState(null);
+
+  const transferableUsers = users.filter(user =>
+    user.id !== currentUserId
+    && user.roleType === 'Member'
+    && user.enabled !== false
+    && user.availability !== 'Leave'
+  );
 
   const categories = [{ id: 'ALL', name: '全部' }, ...taskDomains];
   const filters = [
@@ -50,6 +62,50 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
     if (!proofText.trim()) return;
     onSubmitProof(missionId, proofText);
     handleCloseProofForm();
+  };
+
+  const handleOpenTransferForm = (missionId) => {
+    setTransferMissionId(missionId);
+    setTransferTargetId(transferableUsers[0]?.id || "");
+    setMissionActionError("");
+    setMissionActionMissionId(missionId);
+  };
+
+  const handleCloseTransferForm = () => {
+    setTransferMissionId(null);
+    setTransferTargetId("");
+    setMissionActionError("");
+    setMissionActionMissionId(null);
+  };
+
+  const handleTransferSubmit = async (e, mission) => {
+    e.preventDefault();
+    if (!transferTargetId || !onTransferMission) return;
+    setMissionActionBusy(true);
+    setMissionActionError("");
+    try {
+      await onTransferMission(mission.id, transferTargetId);
+      handleCloseTransferForm();
+    } catch (error) {
+      setMissionActionError(error.message || "任务转交失败，请稍后重试。");
+    } finally {
+      setMissionActionBusy(false);
+    }
+  };
+
+  const handleReturnToAdmin = async (mission) => {
+    if (!onReturnMissionToAdmin || !window.confirm(`确认将任务“${mission.title}”退回管理员吗？退回后任务会转为管理自承接，您将无法继续提交成果。`)) return;
+    setMissionActionBusy(true);
+    setMissionActionError("");
+    setMissionActionMissionId(mission.id);
+    try {
+      await onReturnMissionToAdmin(mission.id);
+      handleCloseTransferForm();
+    } catch (error) {
+      setMissionActionError(error.message || "任务退回失败，请稍后重试。");
+    } finally {
+      setMissionActionBusy(false);
+    }
   };
 
   return (
@@ -116,6 +172,11 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
             const totalPoints = Math.round(m.base_points * m.multiplier);
             const isHighMultiplier = m.multiplier > 1.0;
             const isMyTask = m.assigned_to === currentUserId;
+            const canHandOffTask = m.status === "In Progress"
+              && isMyTask
+              && currentUser.roleType === "Member"
+              && onTransferMission
+              && onReturnMissionToAdmin;
 
             return (
               <div 
@@ -221,6 +282,79 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                           <Send size={16} /> 提交成果交付证明
                         </button>
                       )}
+
+                      {canHandOffTask && (
+                        <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-muted)' }}>
+                          {missionActionError && missionActionMissionId === m.id && (
+                            <div role="alert" style={{ marginBottom: '8px', padding: '7px 9px', borderLeft: '2px solid var(--accent-red)', background: 'rgba(255,75,75,.07)', color: '#ff9aa3', fontSize: '0.72rem' }}>
+                              {missionActionError}
+                            </div>
+                          )}
+                          {transferMissionId === m.id ? (
+                            <form onSubmit={(e) => handleTransferSubmit(e, m)} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <label style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                                新承接人
+                                <select
+                                  className="cyber-select"
+                                  value={transferTargetId}
+                                  onChange={(e) => setTransferTargetId(e.target.value)}
+                                  disabled={missionActionBusy || transferableUsers.length === 0}
+                                  style={{ marginTop: '5px', fontSize: '0.8rem', padding: '7px 10px' }}
+                                >
+                                  {transferableUsers.map(user => (
+                                    <option value={user.id} key={user.id}>{user.name}（{user.role}）</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', lineHeight: '1.4' }}>
+                                转交后由接手人继续完成，任务完整积分归接手人。
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  type="submit"
+                                  className="cyber-btn warning"
+                                  disabled={missionActionBusy || transferableUsers.length === 0 || !transferTargetId}
+                                  style={{ flex: 1, padding: '6px 10px', fontSize: '0.72rem' }}
+                                >
+                                  <ArrowRightLeft size={13} /> {missionActionBusy ? '处理中...' : '确认转交'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCloseTransferForm}
+                                  className="cyber-btn"
+                                  disabled={missionActionBusy}
+                                  style={{ flex: 1, padding: '6px 10px', fontSize: '0.72rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <button
+                                type="button"
+                                className="cyber-btn"
+                                onClick={() => handleOpenTransferForm(m.id)}
+                                disabled={missionActionBusy || transferableUsers.length === 0}
+                                style={{ padding: '7px 8px', fontSize: '0.72rem' }}
+                                title={transferableUsers.length === 0 ? '暂无可接手的普通用户' : '将任务转交给其他普通用户'}
+                              >
+                                <ArrowRightLeft size={14} /> {transferableUsers.length === 0 ? '暂无可转交用户' : '转给其他用户'}
+                              </button>
+                              <button
+                                type="button"
+                                className="cyber-btn"
+                                onClick={() => handleReturnToAdmin(m)}
+                                disabled={missionActionBusy}
+                                style={{ padding: '7px 8px', fontSize: '0.72rem', borderColor: 'var(--border-muted)', background: 'transparent' }}
+                                title="将任务退回管理员并转为管理自承接"
+                              >
+                                <CornerUpLeft size={14} /> 退回管理员
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -233,7 +367,7 @@ export default function MissionBoard({ state, onClaimMission, onSubmitProof }) {
                   {m.status === "Pending Verification" && (
                     <div style={{ background: 'rgba(249, 115, 22, 0.05)', border: '1px dashed var(--accent-orange)', padding: '10px', borderRadius: '4px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-orange)', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '6px' }}>
-                        <Clock size={14} /> 成果审核中，等待总监核准...
+                        <Clock size={14} /> 成果审核中，等待核准...
                       </div>
                       {m.proof_of_work && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'flex-start', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '6px', borderRadius: '2px', wordBreak: 'break-all' }}>

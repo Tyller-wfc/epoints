@@ -74,13 +74,27 @@ export class EpointsController {
   }
 
   @Post('missions/claim')
-  async claimMission(@Body('missionId') missionId: string, @Body('userId') userId: string) {
-    return this.epointsService.claimMission(missionId, userId);
+  async claimMission(@Req() request: any, @Body('missionId') missionId: string) {
+    return this.epointsService.claimMission(missionId, request.user.sub);
   }
 
   @Post('missions/submit')
-  async submitProof(@Body('missionId') missionId: string, @Body('proofText') proofText: string) {
-    return this.epointsService.submitProof(missionId, proofText);
+  async submitProof(@Req() request: any, @Body('missionId') missionId: string, @Body('proofText') proofText: string) {
+    return this.epointsService.submitProof(missionId, proofText, request.user.sub);
+  }
+
+  @Post('missions/transfer')
+  async transferMission(
+    @Req() request: any,
+    @Body('missionId') missionId: string,
+    @Body('targetUserId') targetUserId: string,
+  ) {
+    return this.epointsService.transferMission(request.user.sub, missionId, targetUserId);
+  }
+
+  @Post(['missions/return', 'missions/return-to-admin'])
+  async returnMissionToAdmin(@Req() request: any, @Body('missionId') missionId: string) {
+    return this.epointsService.returnMissionToAdmin(request.user.sub, missionId);
   }
 
   @Post('missions/verify')

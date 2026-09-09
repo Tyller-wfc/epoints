@@ -7,6 +7,8 @@ import {
   restoreSession,
   claimMission, 
   submitProof, 
+  transferMission,
+  returnMissionToAdmin,
   verifyMission, 
   updateMultiplier, 
   createMission, 
@@ -97,7 +99,7 @@ function App() {
 
     setQuickClaimStatus({ type: 'loading', message: '正在提交认领...' });
     try {
-      const nextState = await claimMission(mission.id, currentUser.id);
+      const nextState = await claimMission(mission.id);
       setState(nextState);
       setQuickClaimStatus({ type: 'success', message: '认领成功，任务已进入进行中。' });
     } catch (error) {
@@ -128,12 +130,20 @@ function App() {
     }
   };
 
-  const handleClaimMission = async (missionId, userId) => {
-    setState(await claimMission(missionId, userId));
+  const handleClaimMission = async (missionId) => {
+    setState(await claimMission(missionId));
   };
 
   const handleSubmitProof = async (missionId, proofText) => {
     setState(await submitProof(missionId, proofText));
+  };
+
+  const handleTransferMission = async (missionId, targetUserId) => {
+    setState(await transferMission(missionId, targetUserId));
+  };
+
+  const handleReturnMissionToAdmin = async (missionId) => {
+    setState(await returnMissionToAdmin(missionId));
   };
 
   const handleVerifyMission = async (missionId, isApproved, penalize = false) => {
@@ -435,6 +445,8 @@ function App() {
             state={state} 
             onClaimMission={handleClaimMission} 
             onSubmitProof={handleSubmitProof}
+            onTransferMission={handleTransferMission}
+            onReturnMissionToAdmin={handleReturnMissionToAdmin}
           />
         )}
         {activeTab === 'market' && (
