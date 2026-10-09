@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -44,7 +44,7 @@ export function calculateMissionAdjustment(basePoints: number, totalScore: numbe
 }
 
 @Injectable()
-export class CustomerServiceService {
+export class CustomerServiceService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(ExternalCustomer) private readonly customerRepo: Repository<ExternalCustomer>,
     @InjectRepository(ServiceRecord) private readonly recordRepo: Repository<ServiceRecord>,
@@ -62,6 +62,47 @@ export class CustomerServiceService {
     private readonly dataSource: DataSource,
     private readonly epointsService: EpointsService,
   ) {}
+
+  async onApplicationBootstrap() {
+    await this.syncUnappliedServicePoints();
+  }
+
+  async syncUnappliedServicePoints() {
+    try {
+      const unsyncedEvals = await this.evaluationRepo.find({ where: { isSynced: false } });
+      if (!unsyncedEvals.length) return;
+
+      for (const evaluation of unsyncedEvals) {
+        const ledgers = await this.ledgerRepo.find({ where: { sourceId: evaluation.id } });
+        if (ledgers.length) {
+          for (const ledger of ledgers) {
+            const user = await this.userRepo.findOne({ where: { id: ledger.userId } });
+            if (user) {
+              user.points_balance = Math.max(0, user.points_balance + ledger.pointsDelta);
+              if (ledger.pointsDelta > 0) {
+                user.points_earned_lifetime += ledger.pointsDelta;
+              }
+              await this.userRepo.save(user);
+            }
+          }
+        } else {
+          const participant = await this.participantRepo.findOne({ where: { id: evaluation.participantId } });
+          if (participant && evaluation.pointsAwarded > 0) {
+            const user = await this.userRepo.findOne({ where: { id: participant.userId } });
+            if (user) {
+              user.points_balance = Math.max(0, user.points_balance + evaluation.pointsAwarded);
+              user.points_earned_lifetime += evaluation.pointsAwarded;
+              await this.userRepo.save(user);
+            }
+          }
+        }
+        evaluation.isSynced = true;
+        await this.evaluationRepo.save(evaluation);
+      }
+    } catch (error) {
+      console.warn('syncUnappliedServicePoints warning:', error instanceof Error ? error.message : error);
+    }
+  }
 
   async getCenter(requesterId: string) {
     await this.epointsService.autoUpdateActiveDuty();
@@ -476,12 +517,24 @@ export class CustomerServiceService {
         const exists = await manager.exists(ServiceEvaluation, { where: { serviceRecordId: record.id, participantId: participant.id } });
         if (exists) continue;
         
+        const participantBasePoints = Math.round(record.basePoints * (participant.contributionWeight / 100));
         const pointsAwarded = record.settlementMode === 'Standalone'
-          ? calculateServicePoints(record.basePoints, totalScore)
+          ? calculateServicePoints(participantBasePoints, totalScore)
           : 0;
         
         const evaluationId = `se-${randomUUID()}`;
         
+        const settlements = record.settlementMode === 'Standalone'
+          ? [{ userId: participant.userId, targetType: 'user', targetId: participant.userId, sourceType: 'service_standalone', points: pointsAwarded, reason: `独立客户服务“${record.title}”自动评价 ${totalScore} 分` }]
+          : await Promise.all(links.map(async (link) => {
+            const mission = await manager.findOne(Mission, { where: { id: link.missionId } });
+            if (!mission || !mission.assigned_to) throw new BadRequestException('关联任务必须存在责任人');
+            const points = calculateMissionAdjustment(mission.base_points, totalScore);
+            return { userId: mission.assigned_to, targetType: 'mission', targetId: mission.id, sourceType: 'mission_service_adjustment', points, reason: `客户服务“${record.title}”自动评价 ${totalScore} 分对任务“${mission.title}”的服务调整` };
+          }));
+        
+        const totalPointsAwarded = settlements.reduce((sum, settlement) => sum + settlement.points, 0);
+
         const evaluation = manager.create(ServiceEvaluation, {
           id: evaluationId,
           serviceRecordId: record.id,
@@ -494,21 +547,13 @@ export class CustomerServiceService {
           fairnessScore: professionalismScore,
           collaborationScore: professionalismScore,
           totalScore,
-          pointsAwarded,
+          pointsAwarded: totalPointsAwarded,
           settlementType: record.settlementMode === 'Standalone' ? 'service_standalone' : 'mission_service_adjustment',
           evaluationComment: `系统根据客户反馈自动评价: ${content}`,
           improvementRequired: level === 'Dissatisfied' ? '需针对不满意反馈进行服务质量改进' : null,
+          isSynced: true,
         });
         await manager.save(ServiceEvaluation, evaluation);
-        
-        const settlements = record.settlementMode === 'Standalone'
-          ? [{ userId: participant.userId, targetType: 'user', targetId: participant.userId, sourceType: 'service_standalone', points: pointsAwarded, reason: `独立客户服务“${record.title}”自动评价 ${totalScore} 分` }]
-          : await Promise.all(links.map(async (link) => {
-            const mission = await manager.findOne(Mission, { where: { id: link.missionId } });
-            if (!mission || !mission.assigned_to) throw new BadRequestException('关联任务必须存在责任人');
-            const points = calculateMissionAdjustment(mission.base_points, totalScore);
-            return { userId: mission.assigned_to, targetType: 'mission', targetId: mission.id, sourceType: 'mission_service_adjustment', points, reason: `客户服务“${record.title}”自动评价 ${totalScore} 分对任务“${mission.title}”的服务调整` };
-          }));
         
         for (const settlement of settlements) {
           await manager.save(PointLedger, manager.create(PointLedger, {
@@ -525,7 +570,10 @@ export class CustomerServiceService {
           
           const userToUpdate = await manager.findOne(User, { where: { id: settlement.userId } });
           if (userToUpdate) {
-            userToUpdate.pointsBalance += settlement.points;
+            userToUpdate.points_balance = Math.max(0, userToUpdate.points_balance + settlement.points);
+            if (settlement.points > 0) {
+              userToUpdate.points_earned_lifetime += settlement.points;
+            }
             await manager.save(User, userToUpdate);
           }
         }
@@ -562,14 +610,24 @@ export class CustomerServiceService {
     const totalScore = calculateServiceScore(scores);
     const links = record.settlementMode === 'Mission Linked' ? await this.missionLinkRepo.find({ where: { serviceRecordId: record.id } }) : [];
     if (record.settlementMode === 'Mission Linked' && !links.length) throw new BadRequestException('任务关联服务缺少任务配置');
+    const participantBasePoints = Math.round(record.basePoints * (participant.contributionWeight / 100));
     const pointsAwarded = record.settlementMode === 'Standalone'
-      ? calculateServicePoints(record.basePoints, totalScore)
+      ? calculateServicePoints(participantBasePoints, totalScore)
       : 0;
     const comment = String(data.evaluationComment || '').trim();
     if (!comment) throw new BadRequestException('管理员必须填写评分依据');
     const evaluationId = `se-${randomUUID()}`;
     const participantUser = await this.requireUser(participant.userId);
     await this.dataSource.transaction(async (manager) => {
+      const settlements = record.settlementMode === 'Standalone'
+        ? [{ userId: participant.userId, targetType: 'user', targetId: participant.userId, sourceType: 'service_standalone', points: pointsAwarded, reason: `独立客户服务“${record.title}”管理员评价 ${totalScore} 分` }]
+        : await Promise.all(links.map(async (link) => {
+          const mission = await manager.findOne(Mission, { where: { id: link.missionId } });
+          if (!mission || !mission.assigned_to) throw new BadRequestException('关联任务必须存在责任人');
+          const points = calculateMissionAdjustment(mission.base_points, totalScore);
+          return { userId: mission.assigned_to, targetType: 'mission', targetId: mission.id, sourceType: 'mission_service_adjustment', points, reason: `客户服务“${record.title}”评价 ${totalScore} 分对任务“${mission.title}”的服务调整` };
+        }));
+      const totalPointsAwarded = settlements.reduce((sum, settlement) => sum + settlement.points, 0);
       const evaluation = manager.create(ServiceEvaluation, {
         id: evaluationId,
         serviceRecordId: record.id,
@@ -582,19 +640,13 @@ export class CustomerServiceService {
         fairnessScore: scores[1],
         collaborationScore: scores[1],
         totalScore,
-        pointsAwarded,
+        pointsAwarded: totalPointsAwarded,
         settlementType: record.settlementMode === 'Standalone' ? 'service_standalone' : 'mission_service_adjustment',
         evaluationComment: comment,
         improvementRequired: String(data.improvementRequired || '').trim() || null,
+        isSynced: true,
       });
-      const settlements = record.settlementMode === 'Standalone'
-        ? [{ userId: participant.userId, targetType: 'user', targetId: participant.userId, sourceType: 'service_standalone', points: pointsAwarded, reason: `独立客户服务“${record.title}”管理员评价 ${totalScore} 分` }]
-        : await Promise.all(links.map(async (link) => {
-          const mission = await manager.findOne(Mission, { where: { id: link.missionId } });
-          if (!mission || !mission.assigned_to) throw new BadRequestException('关联任务必须存在责任人');
-          const points = calculateMissionAdjustment(mission.base_points, totalScore);
-          return { userId: mission.assigned_to, targetType: 'mission', targetId: mission.id, sourceType: 'mission_service_adjustment', points, reason: `客户服务“${record.title}”评价 ${totalScore} 分对任务“${mission.title}”的服务调整` };
-        }));
+      await manager.save(ServiceEvaluation, evaluation);
       for (const settlement of settlements) {
         await manager.save(PointLedger, manager.create(PointLedger, {
           id: `pl-${randomUUID()}`,
@@ -612,9 +664,6 @@ export class CustomerServiceService {
         if (settlement.points > 0) targetUser.points_earned_lifetime += settlement.points;
         await manager.save(User, targetUser);
       }
-      evaluation.pointsAwarded = settlements.reduce((sum, settlement) => sum + settlement.points, 0);
-      await manager.save(ServiceEvaluation, evaluation);
-      await manager.save(User, participantUser);
       const evaluatedCount = await manager.count(ServiceEvaluation, { where: { serviceRecordId: record.id } });
       const participantCount = await manager.count(ServiceParticipant, { where: { serviceRecordId: record.id } });
       if (evaluatedCount >= participantCount) {

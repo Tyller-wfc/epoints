@@ -95,7 +95,7 @@ const transitionLabels = {
 
 // defaultScores was removed as it's no longer needed for manual evaluation
 
-export default function CustomerServiceCenter({ showToast }) {
+export default function CustomerServiceCenter({ showToast, onStateChange }) {
   const [data, setData] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState('');
@@ -207,6 +207,7 @@ export default function CustomerServiceCenter({ showToast }) {
       const result = await operation();
       setData(result);
       setSelectedId((current) => current || result.records[0]?.id || null);
+      onStateChange?.();
       return true;
     } catch (requestError) {
       setError(requestError.message);

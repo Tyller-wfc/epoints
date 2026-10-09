@@ -19,6 +19,7 @@
     "migrate:duty-date": "node scripts/migrate-duty-date.cjs",
     "migrate:user-id": "node scripts/migrate-user-id.cjs",
     "migrate:publish-target": "node scripts/migrate-publish-target.cjs",
+    "migrate:service-points": "node scripts/sync-service-points.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

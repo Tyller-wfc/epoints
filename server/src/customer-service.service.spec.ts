@@ -395,4 +395,69 @@ describe('CustomerServiceService createRecord notifications', () => {
     expect(lastTransactionManager.delete).toHaveBeenCalledWith(expect.anything(), { serviceRecordId: 'sr-1' });
     expect(mockEpointsService.sendServiceWecomNotification).toHaveBeenCalledTimes(1);
   });
+
+  it('updates points_balance and points_earned_lifetime when adding feedback', async () => {
+    const admin = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+    const participantUser = {
+      id: 'u-5',
+      name: '刘志松',
+      roleType: 'Engineer',
+      enabled: true,
+      points_balance: 0,
+      points_earned_lifetime: 0,
+    };
+    const record = {
+      id: 'sr-10',
+      title: '资源整理',
+      settlementMode: 'Standalone',
+      basePoints: 500,
+      status: 'Pending Evaluation',
+    };
+    const participant = {
+      id: 'sp-10',
+      serviceRecordId: 'sr-10',
+      userId: 'u-5',
+      contributionWeight: 100,
+    };
+
+    mockEmptyCenter(admin, [admin, participantUser]);
+    mockUserRepo.findOne.mockImplementation(async ({ where }: any) => {
+      if (where.id === 'u-2') return admin;
+      if (where.id === 'u-5') return participantUser;
+      return null;
+    });
+    mockRecordRepo.findOne.mockResolvedValue(record);
+    mockParticipantRepo.find.mockResolvedValue([participant]);
+    mockFeedbackRepo.create = jest.fn((entity) => entity);
+    mockFeedbackRepo.save = jest.fn(async (entity) => entity);
+
+    mockDataSource.transaction = jest.fn(async (callback) => {
+      lastTransactionManager = {
+        exists: jest.fn().mockResolvedValue(false),
+        create: jest.fn((_cls, entity) => entity),
+        save: jest.fn(async (_cls, entity) => entity),
+        findOne: jest.fn(async (_cls, { where }: any) => {
+          if (where.id === 'u-5') return participantUser;
+          return null;
+        }),
+      };
+      return callback(lastTransactionManager);
+    });
+
+    await service.addFeedback('u-2', 'sr-10', {
+      satisfactionLevel: 'Satisfied',
+      content: '1、响应及时。2、态度良好。',
+    });
+
+    expect(participantUser.points_balance).toBe(750);
+    expect(participantUser.points_earned_lifetime).toBe(750);
+    expect(record.status).toBe('Evaluated');
+    expect(lastTransactionManager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        pointsAwarded: 750,
+        isSynced: true,
+      }),
+    );
+  });
 });

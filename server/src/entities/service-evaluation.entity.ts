@@ -51,6 +51,9 @@ export class ServiceEvaluation {
   @Column({ length: 20, default: 'Published' })
   status: string;
 
+  @Column({ name: 'is_synced', default: false })
+  isSynced: boolean;
+
   @CreateDateColumn({ name: 'evaluated_at', type: 'timestamp' })
   evaluatedAt: Date;
 }

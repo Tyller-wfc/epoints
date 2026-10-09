@@ -78,6 +78,15 @@ function App() {
     setSessionStatus('authenticated');
   };
 
+  const refreshAppState = async () => {
+    try {
+      const nextState = await getAppState();
+      if (nextState) setState(nextState);
+    } catch (error) {
+      console.error('刷新系统状态失败:', error);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     setState(null);
@@ -334,7 +343,10 @@ function App() {
         <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
           <button 
             className={`cyber-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => {
+              setActiveTab('dashboard');
+              refreshAppState();
+            }}
             style={{
               background: activeTab === 'dashboard' ? 'var(--accent-cyan)' : 'transparent',
               borderColor: activeTab === 'dashboard' ? 'var(--accent-cyan)' : 'transparent',
@@ -469,7 +481,7 @@ function App() {
           />
         )}
         {activeTab === 'service' && (
-          <CustomerServiceCenter showToast={showToast} />
+          <CustomerServiceCenter showToast={showToast} onStateChange={refreshAppState} />
         )}
         {activeTab === 'admin' && isAdmin && (
           <AdminConsole 
