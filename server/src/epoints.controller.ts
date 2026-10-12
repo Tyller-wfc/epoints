@@ -119,8 +119,12 @@ export class EpointsController {
   }
 
   @Post('rewards/purchase')
-  async purchaseReward(@Body('rewardId') rewardId: string, @Body('userId') userId: string) {
-    return this.epointsService.purchaseReward(rewardId, userId);
+  async purchaseReward(
+    @Body('rewardId') rewardId: string,
+    @Body('userId') userId: string,
+    @Body('points') points?: number,
+  ) {
+    return this.epointsService.purchaseReward(rewardId, userId, points);
   }
 
   @Post('rewards')

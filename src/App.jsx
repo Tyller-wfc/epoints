@@ -201,12 +201,13 @@ function App() {
     return requester?.roleType === 'Admin' ? getPersonnel() : nextState.users;
   };
 
-  const handlePurchaseReward = async (rewardId, userId) => {
-    const res = await purchaseReward(rewardId, userId);
+  const handlePurchaseReward = async (rewardId, userId, points) => {
+    const res = await purchaseReward(rewardId, userId, points);
     if (res && res.error) {
       return res;
     }
     setState(res);
+    return res;
   };
 
   const handleCreateReward = async (data, imageFile) => {

@@ -127,8 +127,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
       { id: "r-11", title: "打车出差费用报销包 (100元额度)", description: "【1eP=1元】企业出行与打车费用报销，凭打车行程单与发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "🚕", level_required: 1 },
       { id: "r-12", title: "差旅住宿费用报销包 (300元额度)", description: "【1eP=1元】出差与项目攻坚住宿费用报销，凭酒店住宿发票按 1:1 核销 300 元额度。", points_cost: 300, inventory: 30, category: "Reimbursement", image: "🏨", level_required: 1 },
       { id: "r-13", title: "餐饮与加班餐费报销包 (150元额度)", description: "【1eP=1元】团队用餐与加班餐费报销，凭餐饮发票按 1:1 核销 150 元额度。", points_cost: 150, inventory: 40, category: "Reimbursement", image: "🍱", level_required: 1 },
-      { id: "r-14", title: "现金折现提现包 (100eP 兑 90元现金)", description: "【9折折现】1 eP = 0.9 元人民币现金，兑换 100 eP 获得 90 元现金打款提现。", points_cost: 100, inventory: 99, category: "CashOut", image: "💵", level_required: 1 },
-      { id: "r-15", title: "现金折现大额提现包 (500eP 兑 450元现金)", description: "【9折折现】1 eP = 0.9 元人民币现金，大额兑换 500 eP 获得 450 元现金打款提现。", points_cost: 500, inventory: 50, category: "CashOut", image: "💰", level_required: 1 }
+      { id: "r-14", title: "现金折现提现通道", description: "【9折折现】1 eP = 0.9 元人民币现金。支持自由输入提现分值（限制在可用积分内），由财务统一打款发放现金。", points_cost: 1, inventory: 9999, category: "CashOut", image: "💵", level_required: 1 }
     ];
     await this.rewardRepo.save(initialRewards);
 

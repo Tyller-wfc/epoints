@@ -568,20 +568,31 @@ export class EpointsService {
     return this.getAppState(userId);
   }
 
-  async purchaseReward(rewardId: string, userId: string) {
+  async purchaseReward(rewardId: string, userId: string, customPoints?: number) {
     const reward = await this.rewardRepo.findOne({ where: { id: rewardId } });
     if (!reward) throw new NotFoundException('Reward not found');
-    if (reward.inventory <= 0) throw new BadRequestException('Out of stock');
+    if (reward.inventory <= 0) throw new BadRequestException('该商品或提现通道已售罄或维护中');
 
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    if (user.points_balance < reward.points_cost) {
-      throw new BadRequestException('Insufficient points');
+    const isCashOut = reward.category === 'CashOut';
+    let pointsSpent = reward.points_cost;
+
+    if (isCashOut || (customPoints !== undefined && customPoints !== null && (typeof customPoints !== 'string' || (customPoints as string).trim() !== ''))) {
+      const parsedPoints = Number(customPoints ?? reward.points_cost);
+      if (!Number.isFinite(parsedPoints) || !Number.isInteger(parsedPoints) || parsedPoints <= 0) {
+        throw new BadRequestException('提现积分必须为大于 0 的整数');
+      }
+      pointsSpent = parsedPoints;
+    }
+
+    if (user.points_balance < pointsSpent) {
+      throw new BadRequestException(`可用积分不足（当前可用 ${user.points_balance} eP，需要 ${pointsSpent} eP）`);
     }
 
     // Deduct points and stock
-    user.points_balance -= reward.points_cost;
+    user.points_balance -= pointsSpent;
     await this.userRepo.save(user);
 
     reward.inventory -= 1;
@@ -589,16 +600,21 @@ export class EpointsService {
 
     // Save transaction
     const tx = new Transaction();
-    tx.id = `tx-${Date.now()}`;
+    tx.id = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     tx.user_id = userId;
     tx.reward_id = rewardId;
-    tx.points_spent = reward.points_cost;
+    tx.points_spent = pointsSpent;
     tx.status = 'Pending Delivery';
     tx.created_at = new Date();
     await this.transactionRepo.save(tx);
 
-    await this.pushFeed('system', `🛒【商城兑换】${user.name} 申请兑换福利礼品：${reward.title}，消耗 ${reward.points_cost} eP。`);
-    return this.getAppState();
+    if (isCashOut) {
+      const cashYuan = (pointsSpent * 0.9).toFixed(2);
+      await this.pushFeed('system', `💵【积分提现】${user.name} 申请积分提现：消耗 ${pointsSpent} eP，折现 ¥${cashYuan} 元现金打款。`);
+    } else {
+      await this.pushFeed('system', `🛒【商城兑换】${user.name} 申请兑换福利礼品：${reward.title}，消耗 ${reward.points_cost} eP。`);
+    }
+    return this.getAppState(userId);
   }
 
   async createReward(requesterId: string, data: any, imageFile?: Express.Multer.File) {
@@ -685,7 +701,12 @@ export class EpointsService {
     const userName = user ? user.name : '未知人员';
     const rewardTitle = reward ? reward.title : '未知商品';
 
-    await this.pushFeed('system', `【福利发放】已向 ${userName} 交付了兑换的福利：${rewardTitle}。`);
+    if (reward && reward.category === 'CashOut') {
+      const cashYuan = (tx.points_spent * 0.9).toFixed(2);
+      await this.pushFeed('system', `【提现打款到账】已向 ${userName} 完成积分提现现金打款：消耗 ${tx.points_spent} eP，折现实发 ¥${cashYuan} 元。`);
+    } else {
+      await this.pushFeed('system', `【福利发放】已向 ${userName} 交付了兑换的福利：${rewardTitle}。`);
+    }
     return this.getAppState(requesterId);
   }
 

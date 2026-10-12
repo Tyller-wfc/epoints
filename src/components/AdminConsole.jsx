@@ -1169,11 +1169,16 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                         申请人: <strong>{user.name}</strong> | 消耗积分: {t.points_spent} eP
+                        {item.category === 'CashOut' && (
+                          <span style={{ marginLeft: '8px', color: 'var(--accent-green)', fontWeight: 'bold' }}>
+                            | 折现打款: ¥{(t.points_spent * 0.9).toFixed(2)} 元
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     <button onClick={() => onDeliverReward(t.id)} className="cyber-btn success" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                      <Check size={14} /> 确认发放
+                      <Check size={14} /> {item.category === 'CashOut' ? '确认打款' : '确认发放'}
                     </button>
                   </div>
                 );
