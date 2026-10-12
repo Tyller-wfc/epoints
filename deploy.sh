@@ -71,6 +71,9 @@ npm run migrate:publish-target
 npm run migrate:service-points
 log_info "数据库迁移完成"
 
+# 在构建前端前限制 Node 最大内存为 1024MB，并强制积极进行垃圾回收
+export NODE_OPTIONS="--max-old-space-size=1024"
+
 log_step "构建后端..."
 npm run build
 log_info "后端构建完成 → $SERVER_DIR/dist/"
