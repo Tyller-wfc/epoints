@@ -8,10 +8,13 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // 将 react 和 lucide 分离，避免单个 chunk 内存分析过大
-          'react-vendor': ['react', 'react-dom'],
-          'lucide-icons': ['lucide-react'],
+        manualChunks(id) {
+          if (id.includes('node_modules/lucide-react')) {
+            return 'lucide-icons'
+          }
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'react-vendor'
+          }
         },
       },
     },

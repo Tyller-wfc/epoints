@@ -50,6 +50,9 @@ NEW_COMMIT=$(git rev-parse --short HEAD)
 log_info "代码已更新：$PREV_COMMIT → $NEW_COMMIT"
 
 # ── 步骤 2：构建前端 ──────────────────────────────────────────────────────
+# 限制 Node 最大内存为 1024MB，并积极进行垃圾回收，防止低配云服务器 OOM
+export NODE_OPTIONS="--max-old-space-size=1024"
+
 log_step "安装前端依赖..."
 cd "$APP_DIR"
 npm install --registry="$NPM_REGISTRY" --prefer-offline
@@ -70,9 +73,6 @@ npm run migrate:service-mission-settlement
 npm run migrate:publish-target
 npm run migrate:service-points
 log_info "数据库迁移完成"
-
-# 在构建前端前限制 Node 最大内存为 1024MB，并强制积极进行垃圾回收
-export NODE_OPTIONS="--max-old-space-size=1024"
 
 log_step "构建后端..."
 npm run build
