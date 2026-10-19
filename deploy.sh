@@ -71,6 +71,7 @@ npm run migrate:attachments
 npm run migrate:service
 npm run migrate:service-mission-settlement
 npm run migrate:publish-target
+npm run migrate:transactions-remark
 npm run migrate:service-points
 log_info "数据库迁移完成"
 

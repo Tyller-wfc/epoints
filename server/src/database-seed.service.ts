@@ -238,8 +238,23 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
 
   private async ensureChannelsExist() {
     try {
-      await this.transactionRepo.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS remark VARCHAR(255) NULL COMMENT '报销类目或兑换凭证备注'`);
-    } catch {}
+      const columns = await this.transactionRepo.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = 'transactions' 
+          AND COLUMN_NAME = 'remark'
+      `);
+      if (!columns || columns.length === 0) {
+        await this.transactionRepo.query(`
+          ALTER TABLE transactions 
+          ADD COLUMN remark VARCHAR(255) NULL 
+          COMMENT '报销类目或兑换凭证备注'
+        `);
+      }
+    } catch (err) {
+      console.error('Failed to ensure transactions.remark column:', err);
+    }
 
     const hasReimbursement = await this.rewardRepo.findOne({ where: { category: 'Reimbursement' } });
     if (!hasReimbursement) {
