@@ -17,6 +17,9 @@ export class Transaction {
   @Column({ default: 'Pending Delivery' })
   status: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  remark?: string;
+
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 }

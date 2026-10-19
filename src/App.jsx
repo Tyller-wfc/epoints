@@ -201,8 +201,8 @@ function App() {
     return requester?.roleType === 'Admin' ? getPersonnel() : nextState.users;
   };
 
-  const handlePurchaseReward = async (rewardId, userId, points) => {
-    const res = await purchaseReward(rewardId, userId, points);
+  const handlePurchaseReward = async (rewardId, userId, points, remark) => {
+    const res = await purchaseReward(rewardId, userId, points, remark);
     if (res && res.error) {
       return res;
     }

@@ -10,6 +10,7 @@ import { Feed } from './entities/feed.entity';
 import { Setting } from './entities/setting.entity';
 import * as bcrypt from 'bcryptjs';
 import { Credential } from './entities/credential.entity';
+import { Transaction } from './entities/transaction.entity';
 
 @Injectable()
 export class DatabaseSeedService implements OnApplicationBootstrap {
@@ -22,6 +23,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
     @InjectRepository(Feed) private readonly feedRepo: Repository<Feed>,
     @InjectRepository(Setting) private readonly settingRepo: Repository<Setting>,
     @InjectRepository(Credential) private readonly credentialRepo: Repository<Credential>,
+    @InjectRepository(Transaction) private readonly transactionRepo: Repository<Transaction>,
   ) {}
 
   async onApplicationBootstrap() {
@@ -34,6 +36,7 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
         if (!exists) await this.credentialRepo.save({ userId: user.id, username: user.id.replace('-', ''), passwordHash });
       }
       await this.repairGarbledDataIfNeeded();
+      await this.ensureChannelsExist();
       console.log('Database already initialized. Skipping seed.');
       return;
     }
@@ -124,10 +127,13 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
       { id: "r-8", title: "Kimi 大模型高级会员 / API 额度包", description: "【L1起兑】长文本长上下文分析、高阶大模型对话与 API 调用额度凭证。", points_cost: 100, inventory: 40, category: "Software", image: "🤖", level_required: 1 },
       { id: "r-9", title: "Antigravity AI 平台高级会员", description: "【L1起兑】Antigravity 智能体开发与自动化编程平台全功能高级订阅。", points_cost: 120, inventory: 30, category: "Software", image: "🚀", level_required: 1 },
       { id: "r-10", title: "Codex / Copilot 编程大模型会员", description: "【L1起兑】智能代码补全、函数生成与 AI 单元测试生成专属订阅。", points_cost: 150, inventory: 30, category: "Software", image: "💻", level_required: 1 },
-      { id: "r-11", title: "打车出差费用报销包 (100元额度)", description: "【1eP=1元】企业出行与打车费用报销，凭打车行程单与发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "🚕", level_required: 1 },
+      { id: "r-11", title: "打车出行费用报销包 (100元额度)", description: "【1eP=1元】企业出行与打车费用报销，凭打车行程单与发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "🚕", level_required: 1 },
       { id: "r-12", title: "差旅住宿费用报销包 (300元额度)", description: "【1eP=1元】出差与项目攻坚住宿费用报销，凭酒店住宿发票按 1:1 核销 300 元额度。", points_cost: 300, inventory: 30, category: "Reimbursement", image: "🏨", level_required: 1 },
       { id: "r-13", title: "餐饮与加班餐费报销包 (150元额度)", description: "【1eP=1元】团队用餐与加班餐费报销，凭餐饮发票按 1:1 核销 150 元额度。", points_cost: 150, inventory: 40, category: "Reimbursement", image: "🍱", level_required: 1 },
-      { id: "r-14", title: "现金折现提现通道", description: "【9折折现】1 eP = 0.9 元人民币现金。支持自由输入提现分值（限制在可用积分内），由财务统一打款发放现金。", points_cost: 1, inventory: 9999, category: "CashOut", image: "💵", level_required: 1 }
+      { id: "r-14", title: "现金折现提现通道", description: "【9折折现】1 eP = 0.9 元人民币现金。支持自由输入提现分值（限制在可用积分内），由财务统一打款发放现金。", points_cost: 1, inventory: 9999, category: "CashOut", image: "💵", level_required: 1 },
+      { id: "r-15", title: "行政综合报销通道", description: "【1:1全额报销】1 eP = 1 元人民币。支持自由输入报销分值（限制在可用积分内），覆盖住宿票、打车票、电子产品（手机/电脑/平板等）、办公用品，由行政统一核销打款。", points_cost: 1, inventory: 9999, category: "Reimbursement", image: "🧾", level_required: 1 },
+      { id: "r-16", title: "电子产品采购报销包 (手机/电脑/平板)", description: "【1eP=1元】个人购买工作用手机、电脑、平板等电子数码产品，凭合规发票按 1:1 核销 500 元额度。", points_cost: 500, inventory: 20, category: "Reimbursement", image: "📱", level_required: 1 },
+      { id: "r-17", title: "办公用品采购报销包 (100元额度)", description: "【1eP=1元】日常办公用品、文具耗材与办公周边采购报销，凭发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "📎", level_required: 1 }
     ];
     await this.rewardRepo.save(initialRewards);
 
@@ -227,6 +233,37 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
           await this.ticketRepo.save(ticket);
         }
       }
+    }
+  }
+
+  private async ensureChannelsExist() {
+    try {
+      await this.transactionRepo.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS remark VARCHAR(255) NULL COMMENT '报销类目或兑换凭证备注'`);
+    } catch {}
+
+    const hasReimbursement = await this.rewardRepo.findOne({ where: { category: 'Reimbursement' } });
+    if (!hasReimbursement) {
+      await this.rewardRepo.save([
+        { id: "r-15", title: "行政综合报销通道", description: "【1:1全额报销】1 eP = 1 元人民币。支持自由输入报销分值（限制在可用积分内），覆盖住宿票、打车票、电子产品（手机/电脑/平板等）、办公用品，由行政统一核销打款。", points_cost: 1, inventory: 9999, category: "Reimbursement", image: "🧾", level_required: 1 },
+        { id: "r-11", title: "打车出行费用报销包 (100元额度)", description: "【1eP=1元】企业出行与打车费用报销，凭打车行程单与发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "🚕", level_required: 1 },
+        { id: "r-12", title: "差旅住宿费用报销包 (300元额度)", description: "【1eP=1元】出差与项目攻坚住宿费用报销，凭酒店住宿发票按 1:1 核销 300 元额度。", points_cost: 300, inventory: 30, category: "Reimbursement", image: "🏨", level_required: 1 },
+        { id: "r-16", title: "电子产品采购报销包 (手机/电脑/平板)", description: "【1eP=1元】个人购买工作用手机、电脑、平板等电子数码产品，凭合规发票按 1:1 核销 500 元额度。", points_cost: 500, inventory: 20, category: "Reimbursement", image: "📱", level_required: 1 },
+        { id: "r-17", title: "办公用品采购报销包 (100元额度)", description: "【1eP=1元】日常办公用品、文具耗材与办公周边采购报销，凭发票按 1:1 核销 100 元额度。", points_cost: 100, inventory: 50, category: "Reimbursement", image: "📎", level_required: 1 },
+      ]);
+    }
+
+    const hasCashOut = await this.rewardRepo.findOne({ where: { category: 'CashOut' } });
+    if (!hasCashOut) {
+      await this.rewardRepo.save({
+        id: "r-14",
+        title: "现金折现提现通道",
+        description: "【9折折现】1 eP = 0.9 元人民币现金。支持自由输入提现分值（限制在可用积分内），由财务统一打款发放现金。",
+        points_cost: 1,
+        inventory: 9999,
+        category: "CashOut",
+        image: "💵",
+        level_required: 1,
+      });
     }
   }
 }

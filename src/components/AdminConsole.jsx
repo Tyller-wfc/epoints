@@ -1174,11 +1174,16 @@ export default function AdminConsole({ state, onVerifyMission, onUpdateMultiplie
                             | 折现打款: ¥{(t.points_spent * 0.9).toFixed(2)} 元
                           </span>
                         )}
+                        {item.category === 'Reimbursement' && (
+                          <span style={{ marginLeft: '8px', color: 'var(--accent-cyan)', fontWeight: 'bold' }}>
+                            | 报销金额: ¥{Number(t.points_spent).toFixed(2)} 元 {t.remark ? `(${t.remark})` : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     <button onClick={() => onDeliverReward(t.id)} className="cyber-btn success" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                      <Check size={14} /> {item.category === 'CashOut' ? '确认打款' : '确认发放'}
+                      <Check size={14} /> {item.category === 'CashOut' ? '确认打款' : item.category === 'Reimbursement' ? '确认报销' : '确认发放'}
                     </button>
                   </div>
                 );

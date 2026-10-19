@@ -146,9 +146,9 @@ export const resetPersonnelAvatar = async (userId) => deleteJson(`/personnel/${u
 
 export const previewMissionRecipients = async (data) => postJson('/missions/notification-preview', data);
 
-export const purchaseReward = async (rewardId, userId, points) => {
+export const purchaseReward = async (rewardId, userId, points, remark) => {
   try {
-    return await postJson('/rewards/purchase', { rewardId, userId, points });
+    return await postJson('/rewards/purchase', { rewardId, userId, points, remark });
   } catch (err) {
     return { error: err.message };
   }

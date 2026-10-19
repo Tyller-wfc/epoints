@@ -66,6 +66,7 @@ CREATE TABLE transactions (
   reward_id VARCHAR(32) NOT NULL COMMENT '兑换商品ID',
   points_spent INT NOT NULL COMMENT '消费积分数额',
   status VARCHAR(32) DEFAULT 'Pending Delivery' COMMENT '物流/核销状态: Pending Delivery / Delivered',
+  remark VARCHAR(255) NULL COMMENT '报销类目或兑换凭证备注',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '交易时间',
   CONSTRAINT fk_tx_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_tx_reward FOREIGN KEY (reward_id) REFERENCES rewards(id) ON DELETE CASCADE

@@ -1,7 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ShoppingBag, Coins, Package, ClipboardList, Plus, Pencil, Trash2, Save, X, ImagePlus, Banknote } from 'lucide-react';
+import { ShoppingBag, Coins, Package, ClipboardList, Plus, Pencil, Trash2, Save, X, ImagePlus, Banknote, Receipt } from 'lucide-react';
 
-const rewardIcons = ['🎁', '🚕', '🏨', '🍱', '💵', '💰', '☕', '🚗', '💾', '🎧', '☁️', '📁', '🤖', '🚀', '💻', '🏖️', '🥤', '🍿', '🍕', '🍰', '⌨️', '🖱️', '🖥️', '📱', '🎨', '📚', '📜', '✈️', '💺'];
+const rewardIcons = ['🎁', '🚕', '🏨', '🍱', '💵', '💰', '☕', '🚗', '💾', '🎧', '☁️', '📁', '🤖', '🚀', '💻', '🏖️', '🥤', '🍿', '🍕', '🍰', '⌨️', '🖱️', '🖥️', '📱', '🎨', '📚', '📜', '✈️', '💺', '🧾', '📎'];
+
+const reimbursementCategories = [
+  { id: 'hotel', label: '住宿票', icon: '🏨', desc: '差旅住宿、酒店客房发票' },
+  { id: 'taxi', label: '打车票', icon: '🚕', desc: '出行交通、打车行程单与发票' },
+  { id: 'electronics', label: '电子产品', icon: '💻', desc: '手机、电脑、平板等办公数码设备' },
+  { id: 'office_supplies', label: '办公用品', icon: '📎', desc: '文具耗材、办公周边与日常用品' },
+  { id: 'other', label: '其他行政报销', icon: '📄', desc: '其他合规行政差旅与采购发票' },
+];
 
 const emptyReward = {
   title: '',
@@ -58,6 +66,16 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [withdrawError, setWithdrawError] = useState('');
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
+
+  // 行政报销弹窗状态
+  const [reimburseModalOpen, setReimburseModalOpen] = useState(false);
+  const [selectedReimburseReward, setSelectedReimburseReward] = useState(null);
+  const [reimbursePoints, setReimbursePoints] = useState('');
+  const [reimburseCategory, setReimburseCategory] = useState('hotel');
+  const [reimburseNote, setReimburseNote] = useState('');
+  const [reimburseSubmitting, setReimburseSubmitting] = useState(false);
+  const [reimburseError, setReimburseError] = useState('');
+  const [reimburseSuccessMsg, setReimburseSuccessMsg] = useState('');
 
   const openCashOutModal = (reward) => {
     setSelectedCashOutReward(reward);
@@ -124,9 +142,101 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
     }
   };
 
+  const openReimburseModal = (reward, preselectedCat) => {
+    const targetReward = reward || rewards.find(r => r.category === 'Reimbursement');
+    setSelectedReimburseReward(targetReward);
+
+    // 根据商品名称智能匹配初始报销类目
+    let initialCat = preselectedCat || 'hotel';
+    if (!preselectedCat && targetReward) {
+      const title = targetReward.title || '';
+      if (title.includes('打车') || title.includes('出行') || title.includes('交通')) initialCat = 'taxi';
+      else if (title.includes('住宿') || title.includes('酒店')) initialCat = 'hotel';
+      else if (title.includes('电子') || title.includes('手机') || title.includes('电脑') || title.includes('平板')) initialCat = 'electronics';
+      else if (title.includes('办公') || title.includes('文具')) initialCat = 'office_supplies';
+    }
+    setReimburseCategory(initialCat);
+    setReimburseNote('');
+
+    let defaultVal = '';
+    if (targetReward && targetReward.points_cost > 1 && targetReward.points_cost <= currentUser.points_balance) {
+      defaultVal = targetReward.points_cost;
+    } else if (currentUser.points_balance > 0) {
+      defaultVal = currentUser.points_balance >= 100 ? 100 : currentUser.points_balance;
+    }
+    setReimbursePoints(defaultVal ? String(defaultVal) : '');
+    setReimburseError('');
+    setReimburseSuccessMsg('');
+    setReimburseModalOpen(true);
+  };
+
+  const handleReimbursePointsChange = (val) => {
+    setReimbursePoints(val);
+    setReimburseSuccessMsg('');
+    if (!val || val.trim() === '') {
+      setReimburseError('请输入报销积分');
+      return;
+    }
+    const num = Number(val);
+    if (!Number.isFinite(num) || !Number.isInteger(num) || num <= 0) {
+      setReimburseError('报销积分必须为大于 0 的整数');
+      return;
+    }
+    if (num > currentUser.points_balance) {
+      setReimburseError(`报销积分不能超过当前可用余额（最多 ${currentUser.points_balance} eP）`);
+      return;
+    }
+    setReimburseError('');
+  };
+
+  const handleQuickSelectReimbursePoints = (pts) => {
+    handleReimbursePointsChange(String(pts));
+  };
+
+  const handleReimburseSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedReimburseReward) return;
+    const num = Number(reimbursePoints);
+    if (!Number.isFinite(num) || !Number.isInteger(num) || num <= 0) {
+      setReimburseError('报销积分必须为大于 0 的整数');
+      return;
+    }
+    if (num > currentUser.points_balance) {
+      setReimburseError(`报销积分不能超过当前可用余额（最多 ${currentUser.points_balance} eP）`);
+      return;
+    }
+
+    const catObj = reimbursementCategories.find(c => c.id === reimburseCategory);
+    const catLabel = catObj ? catObj.label : '行政报销';
+    const finalRemark = reimburseNote.trim() ? `${catLabel} - ${reimburseNote.trim()}` : catLabel;
+
+    setReimburseSubmitting(true);
+    setReimburseError('');
+    try {
+      const res = await onPurchaseReward(selectedReimburseReward.id, currentUserId, num, finalRemark);
+      if (res && res.error) {
+        setReimburseError(res.error);
+      } else {
+        setReimburseSuccessMsg(`报销申请已提交！已扣除 ${num} eP，待行政与财务核销打款 ¥${num.toFixed(2)} 元。`);
+        setTimeout(() => {
+          setReimburseModalOpen(false);
+          setReimburseSuccessMsg('');
+        }, 1200);
+      }
+    } catch (err) {
+      setReimburseError(err.message || '报销申请失败，请稍后重试');
+    } finally {
+      setReimburseSubmitting(false);
+    }
+  };
+
   const handleRedeemClick = async (reward) => {
     if (reward.category === 'CashOut') {
       openCashOutModal(reward);
+      return;
+    }
+    if (reward.category === 'Reimbursement') {
+      openReimburseModal(reward);
       return;
     }
     if (!window.confirm(`确定要消耗 ${reward.points_cost} eP 兑换“${reward.title}”吗？`)) {
@@ -237,6 +347,17 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
 
         <div className="market-header-actions">
           {isAdmin && <button type="button" className="cyber-btn" onClick={beginCreate}><Plus size={15} />新增商品</button>}
+          {rewards.some(r => r.category === 'Reimbursement') && (
+            <button
+              type="button"
+              className="cyber-btn"
+              onClick={() => openReimburseModal(rewards.find(r => r.category === 'Reimbursement'))}
+              disabled={currentUser.points_balance <= 0}
+              style={{ borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+            >
+              <Receipt size={15} />申请报销
+            </button>
+          )}
           {rewards.some(r => r.category === 'CashOut') && (
             <button
               type="button"
@@ -314,6 +435,36 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
         })}
       </div>
 
+      {/* 行政报销专区说明与快速通道 */}
+      {activeCategory === 'Reimbursement' && (
+        <div className="glass-panel" style={{ padding: '16px 20px', background: 'rgba(0, 240, 255, 0.06)', border: '1px solid rgba(0, 240, 255, 0.3)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <div style={{ color: 'var(--accent-cyan)', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🧾</span> 行政报销核销专区 (1:1 全额报销)
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              支持自由输入报销分值（限制在当前可用余额内）。报销汇率按 1:1 核销（1 eP = 1.00 元人民币现金报销额度），凭发票凭据申请，由行政统一核销打款。覆盖住宿票、打车票、电子产品（手机/电脑/平板等）、办公用品等合规发票。
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              当前可用: <strong className="glow-text-cyan">{currentUser.points_balance} eP</strong>
+            </span>
+            {filteredRewards.length > 0 && (
+              <button
+                type="button"
+                className="cyber-btn"
+                disabled={currentUser.points_balance <= 0}
+                onClick={() => openReimburseModal(filteredRewards[0])}
+                style={{ padding: '8px 16px', fontSize: '0.82rem', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+              >
+                <Receipt size={14} /> 立即申请报销
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 现金折现专区说明与快速通道 */}
       {activeCategory === 'CashOut' && (
         <div className="glass-panel" style={{ padding: '16px 20px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -351,7 +502,8 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
           {filteredRewards.map(r => {
             const isCashOut = r.category === 'CashOut';
-            const canAfford = isCashOut ? currentUser.points_balance > 0 : currentUser.points_balance >= r.points_cost;
+            const isReimbursement = r.category === 'Reimbursement';
+            const canAfford = (isCashOut || isReimbursement) ? currentUser.points_balance > 0 : currentUser.points_balance >= r.points_cost;
             const hasStock = r.inventory > 0;
 
             return (
@@ -365,7 +517,7 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                   justifyContent: 'space-between',
                   gap: '12px',
                   opacity: hasStock ? 1 : 0.65,
-                  border: isCashOut ? '1px solid rgba(16, 185, 129, 0.35)' : undefined,
+                  border: isCashOut ? '1px solid rgba(16, 185, 129, 0.35)' : isReimbursement ? '1px solid rgba(0, 240, 255, 0.35)' : undefined,
                 }}
               >
                 <div>
@@ -384,14 +536,14 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {isCashOut ? '提现状态: ' : '剩余库存: '}
+                      {isCashOut || isReimbursement ? '申请状态: ' : '剩余库存: '}
                       <strong style={{ color: hasStock ? 'var(--text-primary)' : 'var(--accent-red)' }}>
-                        {isCashOut ? (hasStock ? '开放申请' : '通道维护中') : r.inventory}
+                        {isCashOut || isReimbursement ? (hasStock ? '开放申请' : '通道维护中') : r.inventory}
                       </strong>
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: canAfford ? 'var(--accent-green)' : 'var(--text-muted)' }}>
                       <Coins size={14} />
-                      {isCashOut ? (
+                      {isCashOut || isReimbursement ? (
                         <span className="military-font" style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
                           自由输入分值
                         </span>
@@ -402,12 +554,12 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                   </div>
 
                   <button
-                    onClick={() => isCashOut ? openCashOutModal(r) : handleRedeemClick(r)}
+                    onClick={() => isCashOut ? openCashOutModal(r) : isReimbursement ? openReimburseModal(r) : handleRedeemClick(r)}
                     className={`cyber-btn ${!hasStock ? 'danger' : canAfford ? 'success' : ''}`}
                     disabled={!hasStock || !canAfford}
                     style={{ width: '100%', fontSize: '0.75rem', padding: '8px' }}
                   >
-                    {!hasStock ? "通道维护中" : isCashOut ? (currentUser.points_balance > 0 ? "申请积分提现" : "暂无可提现积分") : canAfford ? "立即申请兑换" : "积分不足，锁定中"}
+                    {!hasStock ? "通道维护中" : isCashOut ? (currentUser.points_balance > 0 ? "申请积分提现" : "暂无可提现积分") : isReimbursement ? (currentUser.points_balance > 0 ? "申请积分报销" : "暂无可报销积分") : canAfford ? "立即申请兑换" : "积分不足，锁定中"}
                   </button>
                 </div>
               </div>
@@ -433,6 +585,7 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                 const item = rewards.find(r => r.id === tx.reward_id) || { title: "未知商品", image: "📦" };
                 const isDelivered = tx.status === "Delivered";
                 const isCashOut = item.category === 'CashOut';
+                const isReimbursement = item.category === 'Reimbursement';
 
                 return (
                   <div 
@@ -452,14 +605,16 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                         <RewardVisual value={item.image} size={24} /> {item.title}
                       </span>
                       <span className={`badge ${isDelivered ? 'green' : 'orange'}`} style={{ fontSize: '0.6rem', padding: '1px 4px' }}>
-                        {isDelivered ? (isCashOut ? "已打款" : "已发放") : (isCashOut ? "待财务审核打款" : "配送/办理中")}
+                        {isDelivered 
+                          ? (isCashOut ? "已打款" : isReimbursement ? "已报销到账" : "已发放") 
+                          : (isCashOut ? "待财务审核打款" : isReimbursement ? "待行政审核报销" : "配送/办理中")}
                       </span>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                       <span>时间: {formatDate(tx.created_at)}</span>
                       <span className="glow-text-cyan" style={{ fontFamily: 'var(--font-display)', fontWeight: 'bold' }}>
-                        -{tx.points_spent} eP {isCashOut ? `(折现 ¥${(tx.points_spent * 0.9).toFixed(2)})` : ''}
+                        -{tx.points_spent} eP {isCashOut ? `(折现 ¥${(tx.points_spent * 0.9).toFixed(2)})` : isReimbursement ? `(报销 ¥${Number(tx.points_spent).toFixed(2)}${tx.remark ? ` · ${tx.remark}` : ''})` : ''}
                       </span>
                     </div>
                   </div>
@@ -645,6 +800,253 @@ export default function RewardMarket({ state, onPurchaseReward, onCreateReward, 
                   style={{ minWidth: '120px' }}
                 >
                   {withdrawSubmitting ? '提交中...' : '确认申请提现'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 积分行政报销申请弹窗 */}
+      {reimburseModalOpen && selectedReimburseReward && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: 'min(100%, 540px)',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '24px',
+              border: '1px solid var(--accent-cyan)',
+              boxShadow: '0 0 24px var(--accent-cyan-glow)',
+              borderRadius: '8px',
+              overflowY: 'auto',
+            }}
+          >
+            {/* 弹窗头部 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-muted)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-cyan)', fontWeight: 'bold', fontSize: '1.05rem' }}>
+                <Receipt size={20} />
+                <span>申请行政报销 (凭票核销)</span>
+              </div>
+              <button
+                type="button"
+                className="header-icon-btn"
+                onClick={() => setReimburseModalOpen(false)}
+                title="关闭"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 当前账户与核销规则卡片 */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border-muted)', borderRadius: '6px', padding: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>报销申请人:</span>
+                <strong style={{ color: 'var(--text-bright)' }}>{currentUser.name}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>当前可用积分余额:</span>
+                <strong className="military-font glow-text-cyan" style={{ fontSize: '1.1rem' }}>
+                  {currentUser.points_balance} eP
+                </strong>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', borderTop: '1px dashed var(--border-muted)', paddingTop: '8px', marginTop: '4px' }}>
+                📌 报销规则: 按 <strong style={{ color: 'var(--accent-cyan)' }}>1:1 全额报销</strong>（1 eP = 1.00 元人民币），凭合规发票与凭证由行政及财务统一审核打款。
+              </div>
+            </div>
+
+            {/* 输入表单 */}
+            <form onSubmit={handleReimburseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* 报销类目选择 */}
+              <div>
+                <label style={{ display: 'block', color: 'var(--text-bright)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  报销类目 (请选择适用的报销类型)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+                  {reimbursementCategories.map(cat => {
+                    const isSelected = reimburseCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setReimburseCategory(cat.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: isSelected ? '1px solid var(--accent-cyan)' : '1px solid var(--border-muted)',
+                          background: isSelected ? 'rgba(0, 240, 255, 0.15)' : 'rgba(0, 0, 0, 0.25)',
+                          color: isSelected ? 'var(--text-bright)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <span style={{ fontSize: '1.2rem' }}>{cat.icon}</span>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: isSelected ? 'bold' : 'normal', color: isSelected ? 'var(--accent-cyan)' : 'inherit' }}>
+                            {cat.label}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            {cat.desc}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 报销发票或明细说明 */}
+              <div>
+                <label style={{ display: 'block', color: 'var(--text-bright)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  报销说明 / 凭证备注 <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>(选填)</span>
+                </label>
+                <input
+                  type="text"
+                  className="cyber-input"
+                  placeholder="例如：酒店住宿发票、打车行程单、手机电脑购买发票、文具采购清单等"
+                  value={reimburseNote}
+                  maxLength={100}
+                  onChange={(e) => setReimburseNote(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.85rem', padding: '9px 12px' }}
+                />
+              </div>
+
+              {/* 报销积分数额 */}
+              <div>
+                <label style={{ display: 'block', color: 'var(--text-bright)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  报销积分数额 (eP) - 用户可自由输入
+                </label>
+                <div>
+                  <input
+                    type="number"
+                    className="cyber-input"
+                    min="1"
+                    max={currentUser.points_balance}
+                    step="1"
+                    placeholder={`请输入要报销的分数（最多 ${currentUser.points_balance} eP）`}
+                    value={reimbursePoints}
+                    onChange={(e) => handleReimbursePointsChange(e.target.value)}
+                    style={{ width: '100%', fontSize: '1rem', padding: '10px 12px' }}
+                    required
+                  />
+                </div>
+
+                {/* 快捷填入选项 */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '4px' }}>快捷选项:</span>
+                  <button
+                    type="button"
+                    className="cyber-btn"
+                    style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                    onClick={() => handleQuickSelectReimbursePoints(currentUser.points_balance)}
+                    disabled={currentUser.points_balance <= 0}
+                  >
+                    全部报销 ({currentUser.points_balance} eP)
+                  </button>
+                  {[50, 100, 200, 300, 500].filter(pts => pts <= currentUser.points_balance).map(pts => (
+                    <button
+                      key={pts}
+                      type="button"
+                      className="cyber-btn"
+                      style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                      onClick={() => handleQuickSelectReimbursePoints(pts)}
+                    >
+                      {pts} eP
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 实时核算到账预览 */}
+              {(() => {
+                const parsed = Number(reimbursePoints);
+                const isValid = Number.isInteger(parsed) && parsed > 0 && parsed <= currentUser.points_balance;
+                const estimatedCash = isValid ? parsed.toFixed(2) : '0.00';
+                const remainingPoints = isValid ? currentUser.points_balance - parsed : currentUser.points_balance;
+                const currentCatObj = reimbursementCategories.find(c => c.id === reimburseCategory);
+
+                return (
+                  <div style={{ background: 'rgba(0, 240, 255, 0.08)', border: '1px solid rgba(0, 240, 255, 0.3)', borderRadius: '6px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>本次报销消耗:</span>
+                      <strong className="military-font" style={{ color: 'var(--text-bright)' }}>
+                        {isValid ? `${parsed} eP` : '-'}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>报销类目:</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--accent-cyan)', fontWeight: 'bold' }}>
+                        {currentCatObj ? `${currentCatObj.icon} ${currentCatObj.label}` : '行政报销'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>核销比例:</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>100% (1 eP = 1.00元报销款)</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px' }}>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-bright)', fontWeight: 'bold' }}>预计报销到账:</span>
+                      <strong style={{ color: 'var(--accent-cyan)', fontSize: '1.25rem', fontFamily: 'var(--font-display)' }}>
+                        ¥ {estimatedCash} 元
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      <span>报销后剩余可用:</span>
+                      <span>{remainingPoints} eP</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 错误或成功提示 */}
+              {reimburseError && (
+                <div style={{ padding: '8px 12px', background: 'rgba(255, 75, 75, 0.1)', border: '1px solid var(--accent-red)', borderRadius: '4px', color: '#ff9aa3', fontSize: '0.8rem' }}>
+                  {reimburseError}
+                </div>
+              )}
+              {reimburseSuccessMsg && (
+                <div style={{ padding: '8px 12px', background: 'rgba(0, 240, 255, 0.1)', border: '1px solid var(--accent-cyan)', borderRadius: '4px', color: 'var(--accent-cyan)', fontSize: '0.8rem' }}>
+                  {reimburseSuccessMsg}
+                </div>
+              )}
+
+              {/* 操作按钮 */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className="cyber-btn"
+                  onClick={() => setReimburseModalOpen(false)}
+                  disabled={reimburseSubmitting}
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="cyber-btn"
+                  disabled={reimburseSubmitting || !reimbursePoints || !!reimburseError || Number(reimbursePoints) <= 0 || Number(reimbursePoints) > currentUser.points_balance}
+                  style={{ minWidth: '120px', borderColor: 'var(--accent-cyan)', color: 'black', background: 'var(--accent-cyan)' }}
+                >
+                  {reimburseSubmitting ? '提交中...' : '确认申请报销'}
                 </button>
               </div>
             </form>

@@ -123,8 +123,9 @@ export class EpointsController {
     @Body('rewardId') rewardId: string,
     @Body('userId') userId: string,
     @Body('points') points?: number,
+    @Body('remark') remark?: string,
   ) {
-    return this.epointsService.purchaseReward(rewardId, userId, points);
+    return this.epointsService.purchaseReward(rewardId, userId, points, remark);
   }
 
   @Post('rewards')
