@@ -514,7 +514,7 @@ export default function Dashboard({ state, onResetData }) {
                 <li>• 客户结果 (35%) | 专业质量 (20%) | 主动沟通 (15%)</li>
                 <li>• 服务热情 (15%) | 公平透明 (10%) | 协作沉淀 (5%)</li>
                 <li style={{ color: 'var(--text-muted)', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px', marginTop: '4px' }}>
-                  ※ 客户反馈为“满意”或获书面表扬时，额外享有 1.2x - 1.5x 效能积分加成。
+                  ※ 客户评价分为三档：反馈“满意”加分 +10%，“一般”为平（基准发放），“不满意”降分 -20%。
                 </li>
               </ul>
             </div>

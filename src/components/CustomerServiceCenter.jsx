@@ -863,13 +863,13 @@ function FeedbackPanel({ record, feedback, busy, canManage, onSubmit }) {
           <button className="cyber-btn" onClick={() => setOpen((value) => !value)}>记录反馈</button>
         )}
       </div>
-      {feedback.map((item) => <article key={item.id}><span className={`badge ${item.satisfactionLevel === 'Satisfied' ? 'green' : item.satisfactionLevel === 'Dissatisfied' ? 'red' : 'muted'}`}>{item.satisfactionLevel === 'Satisfied' ? '满意' : item.satisfactionLevel === 'Dissatisfied' ? '不满意' : '一般'}</span><p>{item.content}</p><small>{sourceTypeLabels[item.sourceType] || item.sourceType}{item.evidenceNote ? ` · ${item.evidenceNote}` : ''}</small></article>)}
+      {feedback.map((item) => <article key={item.id}><span className={`badge ${item.satisfactionLevel === 'Satisfied' ? 'green' : item.satisfactionLevel === 'Dissatisfied' ? 'red' : 'muted'}`}>{item.satisfactionLevel === 'Satisfied' ? '满意 (+10%)' : item.satisfactionLevel === 'Dissatisfied' ? '不满意 (-20%)' : '一般 (平)'}</span><p>{item.content}</p><small>{sourceTypeLabels[item.sourceType] || item.sourceType}{item.evidenceNote ? ` · ${item.evidenceNote}` : ''}</small></article>)}
       {open && <form className="service-inline-form" onSubmit={handleSubmit}>
         <select className="cyber-select" name="satisfactionLevel" defaultValue="" required>
           <option value="" disabled>请选择满意度评价</option>
-          <option value="Satisfied">满意</option>
-          <option value="Neutral">一般</option>
-          <option value="Dissatisfied">不满意</option>
+          <option value="Satisfied">满意（加分 +10%）</option>
+          <option value="Neutral">一般（平 0%）</option>
+          <option value="Dissatisfied">不满意（降分 -20%）</option>
         </select>
         <select className="cyber-select" name="sourceType" defaultValue="" required>
           <option value="" disabled>请选择反馈来源/方式</option>

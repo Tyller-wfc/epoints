@@ -7,16 +7,17 @@ describe('customer service scoring rules', () => {
   });
 
   it.each([
-    [90, 150],
-    [80, 120],
+    [90, 110],
+    [80, 100],
     [70, 100],
-    [69, 0],
+    [69, 80],
   ])('converts score %i to the configured point tier', (score, expected) => {
     expect(calculateServicePoints(100, score)).toBe(expected);
   });
 
   it('adjusts linked mission points by quality score', () => {
-    expect(calculateMissionAdjustment(600, 92)).toBe(120);
+    expect(calculateMissionAdjustment(600, 92)).toBe(60);
+    expect(calculateMissionAdjustment(600, 80)).toBe(0);
     expect(calculateMissionAdjustment(600, 65)).toBe(-120);
   });
 });
@@ -449,15 +450,25 @@ describe('CustomerServiceService createRecord notifications', () => {
       content: '1、响应及时。2、态度良好。',
     });
 
-    expect(participantUser.points_balance).toBe(750);
-    expect(participantUser.points_earned_lifetime).toBe(750);
+    expect(participantUser.points_balance).toBe(550);
+    expect(participantUser.points_earned_lifetime).toBe(550);
     expect(record.status).toBe('Evaluated');
     expect(lastTransactionManager.save).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        pointsAwarded: 750,
+        pointsAwarded: 550,
         isSynced: true,
       }),
     );
+  });
+
+  it('awards flat base points for Neutral feedback and deducts 20% for Dissatisfied', async () => {
+    // Neutral test: 500 base points * 1.0 = 500
+    expect(calculateServicePoints(500, 80)).toBe(500);
+    expect(calculateMissionAdjustment(500, 80)).toBe(0);
+
+    // Dissatisfied test: 500 base points * 0.8 = 400 (-20%)
+    expect(calculateServicePoints(500, 60)).toBe(400);
+    expect(calculateMissionAdjustment(500, 60)).toBe(-100);
   });
 });

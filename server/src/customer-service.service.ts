@@ -34,12 +34,12 @@ export function calculateServiceScore(scores: number[]) {
 }
 
 export function calculateServicePoints(basePoints: number, totalScore: number) {
-  const multiplier = totalScore >= 90 ? 1.5 : totalScore >= 80 ? 1.2 : totalScore >= 70 ? 1 : 0;
+  const multiplier = totalScore >= 90 ? 1.1 : totalScore >= 70 ? 1.0 : 0.8;
   return Math.round(basePoints * multiplier);
 }
 
 export function calculateMissionAdjustment(basePoints: number, totalScore: number) {
-  const multiplier = totalScore >= 90 ? 1.2 : totalScore >= 80 ? 1.1 : totalScore >= 70 ? 1 : totalScore >= 60 ? 0.8 : 0;
+  const multiplier = totalScore >= 90 ? 1.1 : totalScore >= 70 ? 1.0 : 0.8;
   return Math.round(basePoints * (multiplier - 1));
 }
 
@@ -498,14 +498,14 @@ export class CustomerServiceService implements OnApplicationBootstrap {
     record.customerSatisfaction = level;
     record.customerConfirmedAt = new Date();
     
-    let outcomeScore = 85;
-    let professionalismScore = 85;
+    let outcomeScore = 80;
+    let professionalismScore = 80;
     if (level === 'Satisfied') {
       outcomeScore = 95;
       professionalismScore = 95;
     } else if (level === 'Dissatisfied') {
-      outcomeScore = 55;
-      professionalismScore = 55;
+      outcomeScore = 60;
+      professionalismScore = 60;
     }
     const totalScore = calculateServiceScore([outcomeScore, professionalismScore]);
     
