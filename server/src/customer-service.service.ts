@@ -437,6 +437,95 @@ export class CustomerServiceService implements OnApplicationBootstrap {
     return this.getCenter(requesterId);
   }
 
+  async updateRecordPoints(requesterId: string, recordId: string, data: any) {
+    const requester = await this.requireUser(requesterId);
+    const record = await this.requireRecord(recordId);
+
+    if (requester.roleType !== 'Admin' && record.createdBy !== requesterId) {
+      throw new ForbiddenException('仅管理员或登记人可以修改服务积分');
+    }
+
+    if (record.status === 'Cancelled') {
+      throw new BadRequestException('已取消的服务记录不可修改积分');
+    }
+
+    const rawPoints = Number(data.basePoints);
+    if (isNaN(rawPoints) || !Number.isInteger(rawPoints) || rawPoints < 0 || rawPoints > 1000) {
+      throw new BadRequestException('基础积分必须为 0 至 1000 的整数');
+    }
+
+    const evaluations = await this.evaluationRepo.find({ where: { serviceRecordId: record.id } });
+    if (evaluations.length > 0 && requester.roleType !== 'Admin') {
+      throw new ForbiddenException('已完成结算的服务记录仅管理员可调整积分');
+    }
+
+    const newBasePoints = rawPoints;
+    const oldBasePoints = record.basePoints;
+
+    if (newBasePoints === oldBasePoints) {
+      return this.getCenter(requesterId);
+    }
+
+    const recordParticipants = evaluations.length > 0 && record.settlementMode === 'Standalone'
+      ? await this.participantRepo.find({ where: { serviceRecordId: record.id } })
+      : [];
+    const participantMap = new Map(recordParticipants.map((p) => [p.id, p]));
+
+    await this.dataSource.transaction(async (manager) => {
+      record.basePoints = newBasePoints;
+      await manager.save(ServiceRecord, record);
+
+      if (evaluations.length > 0 && record.settlementMode === 'Standalone') {
+        for (const evaluation of evaluations) {
+          const participant = participantMap.get(evaluation.participantId);
+          if (!participant) continue;
+
+          const oldPointsAwarded = evaluation.pointsAwarded;
+          const newParticipantBasePoints = Math.round(newBasePoints * (participant.contributionWeight / 100));
+          const newPointsAwarded = calculateServicePoints(newParticipantBasePoints, evaluation.totalScore);
+          const delta = newPointsAwarded - oldPointsAwarded;
+
+          if (delta !== 0) {
+            evaluation.pointsAwarded = newPointsAwarded;
+            await manager.save(ServiceEvaluation, evaluation);
+
+            const user = await manager.findOne(User, { where: { id: participant.userId } });
+            if (user) {
+              user.points_balance = Math.max(0, user.points_balance + delta);
+              if (delta > 0) {
+                user.points_earned_lifetime += delta;
+              } else {
+                user.points_earned_lifetime = Math.max(0, user.points_earned_lifetime + delta);
+              }
+              await manager.save(User, user);
+            }
+
+            await manager.save(PointLedger, manager.create(PointLedger, {
+              id: `pl-${randomUUID()}`,
+              userId: participant.userId,
+              sourceType: 'service_standalone',
+              sourceId: `adj-${randomUUID()}`,
+              targetType: 'user',
+              targetId: participant.userId,
+              pointsDelta: delta,
+              reason: `客户服务“${record.title}”基础积分从 ${oldBasePoints} eP 修改为 ${newBasePoints} eP 重新核算`,
+              operatorId: requesterId,
+            }));
+          }
+        }
+      }
+
+      await manager.save(Feed, manager.create(Feed, {
+        id: `f-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: 'service',
+        message: `【服务积分调整】${requester.name} 将服务“${record.title}”的基础积分从 ${oldBasePoints} eP 修改为 ${newBasePoints} eP。`,
+        timestamp: new Date(),
+      }));
+    });
+
+    return this.getCenter(requesterId);
+  }
+
   async transitionRecord(requesterId: string, recordId: string, data: any) {
     const requester = await this.requireUser(requesterId);
     if (requester.roleType === 'Observer') throw new ForbiddenException('观察者无权操作服务流转');

@@ -345,6 +345,13 @@ body {
 .service-detail-block, .service-participant-list { padding: 12px; border: 1px solid var(--border-muted); background: rgba(0,0,0,.12); }
 .service-detail-block > strong, .service-participant-list > strong { color: var(--accent-cyan); font-size: .7rem; }
 .service-detail-block p { margin-top: 7px; color: var(--text-secondary); font-size: .78rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.service-points-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.service-points-edit-box { margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.28); border: 1px dashed var(--border-cyan); border-radius: 4px; }
+.service-points-edit-title { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--accent-cyan); font-weight: 600; }
+.service-points-edit-inputs { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.service-points-edit-inputs .cyber-input { max-width: 140px; padding: 5px 10px; font-size: 0.8rem; }
+.service-points-edit-inputs .cyber-btn { padding: 5px 12px; font-size: 0.72rem; }
+.service-points-edit-warn { margin-top: 8px !important; color: var(--accent-orange, #f59e0b) !important; font-size: 0.68rem !important; }
 .service-points-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px 12px; margin-top: 10px; }
 .service-points-summary span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .service-points-summary small { color: var(--text-muted); font-size: .64rem; }

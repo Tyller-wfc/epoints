@@ -227,6 +227,7 @@ export const getServiceCenter = async () => {
 export const createExternalCustomer = async (data) => postJson('/service-center/customers', data);
 export const createServiceRecord = async (data, files = []) => postForm('/service-center/records', data, files);
 export const updateServiceRecord = async (recordId, data) => putJson(`/service-center/records/${recordId}`, data);
+export const updateServiceRecordPoints = async (recordId, basePoints) => putJson(`/service-center/records/${recordId}/points`, { basePoints: Number(basePoints) });
 export const transitionServiceRecord = async (recordId, data) => postJson(`/service-center/records/${recordId}/transition`, data);
 export const addServiceFeedback = async (recordId, data) => postJson(`/service-center/records/${recordId}/feedback`, data);
 export const evaluateServiceParticipant = async (recordId, participantId, data) => postJson(`/service-center/records/${recordId}/participants/${participantId}/evaluate`, data);

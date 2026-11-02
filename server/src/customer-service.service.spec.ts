@@ -471,4 +471,153 @@ describe('CustomerServiceService createRecord notifications', () => {
     expect(calculateServicePoints(500, 60)).toBe(400);
     expect(calculateMissionAdjustment(500, 60)).toBe(-100);
   });
+
+  describe('updateRecordPoints', () => {
+    it('allows admin to modify base points on an un-evaluated record and logs feed', async () => {
+      const admin = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+      const record = {
+        id: 'sr-100',
+        title: '测试服务',
+        basePoints: 100,
+        status: 'New',
+        createdBy: 'u-2',
+        settlementMode: 'Standalone',
+      };
+
+      mockEmptyCenter(admin);
+      mockUserRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where.id === 'u-2') return admin;
+        return null;
+      });
+      mockRecordRepo.findOne.mockResolvedValue(record);
+      mockEvaluationRepo.find.mockResolvedValue([]);
+
+      mockDataSource.transaction = jest.fn(async (callback) => {
+        lastTransactionManager = {
+          save: jest.fn(async (_cls, entity) => entity),
+          create: jest.fn((_cls, entity) => entity),
+        };
+        return callback(lastTransactionManager);
+      });
+
+      await service.updateRecordPoints('u-2', 'sr-100', { basePoints: 250 });
+
+      expect(record.basePoints).toBe(250);
+      expect(lastTransactionManager.save).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        id: 'sr-100',
+        basePoints: 250,
+      }));
+      expect(lastTransactionManager.save).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        type: 'service',
+        message: expect.stringContaining('将服务“测试服务”的基础积分从 100 eP 修改为 250 eP'),
+      }));
+    });
+
+    it('rejects non-admin non-creator or invalid points', async () => {
+      const normalUser = { id: 'u-8', name: '普通员工', roleType: 'Engineer', enabled: true };
+      const record = {
+        id: 'sr-101',
+        title: '他人服务',
+        basePoints: 100,
+        status: 'New',
+        createdBy: 'u-2',
+      };
+
+      mockEmptyCenter(normalUser);
+      mockUserRepo.findOne.mockResolvedValue(normalUser);
+      mockRecordRepo.findOne.mockResolvedValue(record);
+
+      await expect(service.updateRecordPoints('u-8', 'sr-101', { basePoints: 200 }))
+        .rejects.toThrow('仅管理员或登记人可以修改服务积分');
+
+      const admin = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+      mockUserRepo.findOne.mockResolvedValue(admin);
+
+      await expect(service.updateRecordPoints('u-2', 'sr-101', { basePoints: -50 }))
+        .rejects.toThrow('基础积分必须为 0 至 1000 的整数');
+
+      await expect(service.updateRecordPoints('u-2', 'sr-101', { basePoints: 1500 }))
+        .rejects.toThrow('基础积分必须为 0 至 1000 的整数');
+
+      const cancelledRecord = { ...record, status: 'Cancelled' };
+      mockRecordRepo.findOne.mockResolvedValue(cancelledRecord);
+      await expect(service.updateRecordPoints('u-2', 'sr-101', { basePoints: 200 }))
+        .rejects.toThrow('已取消的服务记录不可修改积分');
+    });
+
+    it('recalculates points and adjusts user balance and ledger for evaluated records', async () => {
+      const admin = { id: 'u-2', name: '王方超', roleType: 'Admin', enabled: true };
+      const participantUser = {
+        id: 'u-5',
+        name: '刘志松',
+        roleType: 'Engineer',
+        enabled: true,
+        points_balance: 110,
+        points_earned_lifetime: 110,
+      };
+      const record = {
+        id: 'sr-102',
+        title: '已结算服务',
+        settlementMode: 'Standalone',
+        basePoints: 100,
+        status: 'Evaluated',
+        createdBy: 'u-2',
+      };
+      const participant = {
+        id: 'sp-102',
+        serviceRecordId: 'sr-102',
+        userId: 'u-5',
+        contributionWeight: 100,
+      };
+      const evaluation = {
+        id: 'se-102',
+        serviceRecordId: 'sr-102',
+        participantId: 'sp-102',
+        totalScore: 95, // multiplier 1.1
+        pointsAwarded: 110,
+      };
+
+      mockEmptyCenter(admin, [admin, participantUser]);
+      mockUserRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where.id === 'u-2') return admin;
+        if (where.id === 'u-5') return participantUser;
+        return null;
+      });
+      mockRecordRepo.findOne.mockResolvedValue(record);
+      mockEvaluationRepo.find.mockResolvedValue([evaluation]);
+      mockParticipantRepo.find.mockResolvedValue([participant]);
+
+      mockDataSource.transaction = jest.fn(async (callback) => {
+        lastTransactionManager = {
+          create: jest.fn((_cls, entity) => entity),
+          save: jest.fn(async (_cls, entity) => entity),
+          findOne: jest.fn(async (_cls, { where }: any) => {
+            if (where.id === 'u-5') return participantUser;
+            return null;
+          }),
+        };
+        return callback(lastTransactionManager);
+      });
+
+      // Change basePoints from 100 to 200:
+      // new awarded = round(200 * 100% * 1.1) = 220
+      // delta = 220 - 110 = +110
+      await service.updateRecordPoints('u-2', 'sr-102', { basePoints: 200 });
+
+      expect(record.basePoints).toBe(200);
+      expect(evaluation.pointsAwarded).toBe(220);
+      expect(participantUser.points_balance).toBe(220);
+      expect(participantUser.points_earned_lifetime).toBe(220);
+
+      expect(lastTransactionManager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          userId: 'u-5',
+          pointsDelta: 110,
+          sourceType: 'service_standalone',
+          reason: expect.stringContaining('从 100 eP 修改为 200 eP 重新核算'),
+        }),
+      );
+    });
+  });
 });

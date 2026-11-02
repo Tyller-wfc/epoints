@@ -7,6 +7,7 @@ import {
   getServiceCenter,
   transitionServiceRecord,
   updateServiceRecord,
+  updateServiceRecordPoints,
 } from '../data/mockData';
 import AttachmentList from './AttachmentList';
 import AttachmentPicker from './AttachmentPicker';
@@ -548,6 +549,16 @@ export default function CustomerServiceCenter({ showToast, onStateChange }) {
                 missionLinks={missionLinks}
                 missionById={missionById}
                 userById={userById}
+                canManage={data.canManage}
+                currentUserId={data.currentUserId}
+                busy={busy}
+                onUpdatePoints={async (newPoints) => {
+                  const success = await submit(() => updateServiceRecordPoints(selected.id, newPoints));
+                  if (success) {
+                    showToast?.('success', `服务“${selected.title}”基础积分已修改为 ${newPoints} eP ✓`);
+                  }
+                  return success;
+                }}
               />
               {selected.returnReason && (
                 <Detail
@@ -652,7 +663,26 @@ function Detail({ label, text }) {
   return <div className="service-detail-block"><strong>{label}</strong><p>{text}</p></div>;
 }
 
-function ServicePointsDetail({ record, participants, evaluations, missionLinks, missionById, userById }) {
+function ServicePointsDetail({
+  record,
+  participants,
+  evaluations,
+  missionLinks,
+  missionById,
+  userById,
+  canManage,
+  currentUserId,
+  busy,
+  onUpdatePoints,
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editPoints, setEditPoints] = useState(record?.basePoints || 100);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setEditPoints(record?.basePoints || 100);
+  }, [record?.id, record?.basePoints]);
+
   const participantIds = new Set(participants.map((item) => item.id));
   const recordEvaluations = evaluations.filter((item) => participantIds.has(item.participantId));
   const settledPoints = recordEvaluations.reduce((sum, item) => sum + Number(item.pointsAwarded || 0), 0);
@@ -663,9 +693,78 @@ function ServicePointsDetail({ record, participants, evaluations, missionLinks, 
     ? participants.map((item) => `${userById.get(item.userId)?.name || '服务人员'} ${item.contributionWeight}%`).join('、')
     : '未分配';
 
+  const canEditPoints = (canManage || (record?.createdBy === currentUserId && record?.status !== 'Evaluated')) && record?.status !== 'Cancelled';
+
+  const handleSubmitPoints = async (e) => {
+    e.preventDefault();
+    const val = Number(editPoints);
+    if (!Number.isInteger(val) || val < 0 || val > 1000) return;
+    const ok = await onUpdatePoints?.(val);
+    if (ok) {
+      setIsEditing(false);
+    }
+  };
+
   return (
     <div className="service-detail-block service-points-detail">
-      <strong>积分情况</strong>
+      <div className="service-points-header">
+        <strong>积分情况</strong>
+        {canEditPoints && !isEditing && (
+          <button
+            type="button"
+            className="cyber-btn-quick"
+            onClick={() => {
+              setEditPoints(record.basePoints || 100);
+              setIsEditing(true);
+            }}
+            title="修改服务基础积分"
+          >
+            <Pencil size={11} /> 修改积分
+          </button>
+        )}
+      </div>
+
+      {isEditing && (
+        <form className="service-points-edit-box" onSubmit={handleSubmitPoints}>
+          <div className="service-points-edit-title">
+            <span>修改基础积分数值</span>
+            <small className="service-muted">(0 ~ 1000 eP)</small>
+          </div>
+          <div className="service-points-edit-inputs">
+            <input
+              type="number"
+              className="cyber-input"
+              min="0"
+              max="1000"
+              value={editPoints}
+              onChange={(e) => setEditPoints(e.target.value)}
+              placeholder="基础积分"
+              autoFocus
+              required
+            />
+            <button type="submit" className="cyber-btn success" disabled={busy}>
+              <Check size={13} /> 保存
+            </button>
+            <button
+              type="button"
+              className="cyber-btn"
+              onClick={() => {
+                setIsEditing(false);
+                setEditPoints(record.basePoints || 100);
+              }}
+              disabled={busy}
+            >
+              <XCircle size={13} /> 取消
+            </button>
+          </div>
+          {recordEvaluations.length > 0 && (
+            <p className="service-points-edit-warn">
+              ⚠️ 该服务已完成评价结算，修改基础积分将自动重新核算参与人员得分并多退少补调整积分余额。
+            </p>
+          )}
+        </form>
+      )}
+
       <div className="service-points-summary">
         <span>
           <small>基础积分</small>

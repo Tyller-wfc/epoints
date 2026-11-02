@@ -28,6 +28,16 @@ export class CustomerServiceController {
     return this.service.createRecord(request.user.sub, data, request.headers?.origin || '', files || []);
   }
 
+  @Put('records/:id/points')
+  updateRecordPoints(@Req() request: any, @Param('id') id: string, @Body() data: any) {
+    return this.service.updateRecordPoints(request.user.sub, id, data);
+  }
+
+  @Post('records/:id/points')
+  updateRecordPointsPost(@Req() request: any, @Param('id') id: string, @Body() data: any) {
+    return this.service.updateRecordPoints(request.user.sub, id, data);
+  }
+
   @Put('records/:id')
   updateReturnedRecord(@Req() request: any, @Param('id') id: string, @Body() data: any) {
     return this.service.updateReturnedRecord(request.user.sub, id, data, request.headers?.origin || '');
